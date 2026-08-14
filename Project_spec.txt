@@ -1,0 +1,136 @@
+3. Project Specification
+Project Name
+
+PersonalFont
+
+One-line description
+
+A handwriting-to-font system that converts a user's handwritten template pages into a personalized installable font.
+
+Core architecture
+                    ┌─────────────────┐
+                    │     Frontend    │
+                    │                 │
+                    │ Upload / Review │
+                    │ Preview/Download│
+                    └────────┬────────┘
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │      API        │
+                    └────────┬────────┘
+                             │
+                             ▼
+              ┌────────────────────────────┐
+              │     Font Processing        │
+              │                            │
+              │ Preprocessing              │
+              │ Alignment                  │
+              │ Segmentation               │
+              │ Validation                 │
+              │ Normalization              │
+              │ Vectorization              │
+              │ Font Generation            │
+              └──────────────┬─────────────┘
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │ Generated Font  │
+                    │                 │
+                    │ TTF             │
+                    │ OTF             │
+                    │ SVG             │
+                    │ Preview         │
+                    └─────────────────┘
+Suggested repository
+personal-font-generator/
+│
+├── backend/
+│   ├── app/
+│   │   ├── api/
+│   │   ├── models/
+│   │   ├── services/
+│   │   └── main.py
+│   │
+│   ├── pipeline/
+│   │   ├── preprocessing/
+│   │   ├── alignment/
+│   │   ├── segmentation/
+│   │   ├── validation/
+│   │   ├── normalization/
+│   │   ├── vectorization/
+│   │   ├── font_generation/
+│   │   └── preview/
+│   │
+│   ├── tests/
+│   └── requirements.txt
+│
+├── frontend/
+│
+├── templates/
+│   ├── template_v1.pdf
+│   └── template_v1.json
+│
+├── output/
+│
+├── docs/
+│
+├── scripts/
+│
+├── README.md
+└── docker-compose.yml
+Important design decision
+
+The template definition must be data-driven, not hardcoded.
+
+For example:
+
+template_v1.json
+
+page_1:
+  A: {x, y, width, height}
+  B: {x, y, width, height}
+  ...
+
+This means later you can create:
+
+template_v1
+template_v2
+urdu_template
+extended_punctuation_template
+
+without rewriting the segmentation engine.
+
+4. V1 Technology Stack
+
+I'd keep it boring and reliable:
+
+Backend
+
+Python + FastAPI
+
+Image processing
+
+OpenCV + NumPy
+
+Vectorization
+
+Use an established bitmap-to-vector approach/library rather than writing a Bézier tracing algorithm from scratch initially.
+
+Font generation
+
+Use FontTools and/or FontForge.
+
+Frontend
+
+Since you're already comfortable with Next.js:
+
+Next.js + TypeScript
+
+Storage
+
+For V1:
+
+local filesystem
+
+Don't introduce S3/database complexity yet.

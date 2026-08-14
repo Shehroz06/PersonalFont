@@ -1,0 +1,95 @@
+NFR-01 — Accuracy
+
+Character extraction and labeling must be highly reliable.
+
+Target:
+
+≥95% correct character extraction on clean template photographs.
+
+NFR-02 — Robustness
+
+The system should tolerate:
+
+Different lighting
+Slight rotation
+Camera perspective
+Moderate shadows
+Different paper colors
+Different handwriting thickness
+NFR-03 — Performance
+
+For a typical 4–6 page submission:
+
+Processing should ideally complete within 30–60 seconds on a normal CPU machine.
+
+Don't sacrifice extraction quality merely to achieve this target.
+
+NFR-04 — Maintainability
+
+Use modular components:
+
+preprocessing/
+alignment/
+segmentation/
+validation/
+normalization/
+vectorization/
+font_generation/
+preview/
+packaging/
+NFR-05 — Extensibility
+
+Architecture must allow future integration of:
+
+DINOv2 embeddings
+Writer identification
+Style embeddings
+Few-shot glyph generation
+AI-generated missing glyphs
+Multiple handwriting styles
+NFR-06 — Reliability
+
+A failed character should not crash the complete pipeline.
+
+The system should report:
+
+D.png → invalid
+E.png → valid
+F.png → missing
+
+rather than failing the entire job.
+
+NFR-07 — Security
+
+Uploaded files must:
+
+Be type validated
+Have size limits
+Be processed in isolated job directories
+Not be executed as code
+Be deleted after configurable retention period
+NFR-08 — Privacy
+
+Handwriting is biometric-like personal data.
+
+The system should:
+
+Avoid unnecessary permanent storage
+Delete uploaded images after processing when configured
+Never expose one user's handwriting to another user
+Keep generated files private
+NFR-09 — Reproducibility
+
+Given the same input pages and configuration, the system should produce substantially identical output.
+
+NFR-10 — Observability
+
+Every processing stage should produce structured logs:
+
+JOB_CREATED
+PAGE_PREPROCESSED
+PAGE_ALIGNED
+GLYPHS_EXTRACTED
+VALIDATION_COMPLETED
+FONT_GENERATED
+JOB_COMPLETED

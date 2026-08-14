@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Node
+node_modules/
+.next/
+dist/
+build/
+
+# Job data / generated output (never commit user handwriting data)
+jobs/*
+!jobs/.gitkeep
+output/*
+!output/.gitkeep
+
+# OS / editor
+.DS_Store
+*.swp
+
+# Env
+.env
+.env.local

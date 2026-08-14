@@ -1,0 +1,137 @@
+1. Functional Requirements
+FR-01 — Template Generation
+
+The system shall provide downloadable handwriting templates containing required:
+
+Uppercase A-Z
+Lowercase a-z
+Digits 0-9
+Basic punctuation
+Sample words/sentences
+
+Each character must have a known position/identifier.
+
+FR-02 — Handwriting Upload
+
+The user shall be able to upload 2-4 images of completed handwriting sheets.
+
+Supported initially:
+
+JPG/JPEG
+PNG
+PDF optionally
+FR-03 — Image Preprocessing
+
+The system shall automatically:
+
+Detect the page
+Correct perspective
+Crop the page
+Convert to grayscale
+Remove noise
+Threshold/binarize
+Correct minor rotation/skew
+FR-04 — Template Alignment
+
+The system shall align the uploaded page with the official template and determine the location of every character box.
+
+FR-05 — Character Extraction
+
+The system shall extract individual handwriting samples into:
+
+A.png
+B.png
+C.png
+...
+a.png
+b.png
+...
+0.png
+1.png
+...
+FR-06 — Character Validation
+
+The system shall detect:
+
+Missing character
+Empty box
+Multiple connected characters
+Excessive noise
+Invalid/unclear sample
+Incorrect page/template
+
+The UI shall clearly show which characters need rewriting.
+
+FR-07 — Glyph Normalization
+
+Each extracted glyph shall be:
+
+Cropped
+Centered
+Scaled
+Baseline-aligned
+Normalized while preserving aspect ratio
+FR-08 — Vectorization
+
+The system shall convert normalized bitmap glyphs into vector paths/SVG.
+
+FR-09 — Font Generation
+
+The system shall construct a font from the generated glyphs.
+
+Minimum output:
+
+.ttf
+.otf
+FR-10 — Font Metadata
+
+The generated font shall contain:
+
+User-selected font name
+Version
+Copyright/creator metadata
+Character mappings
+FR-11 — Preview
+
+The system shall generate a preview containing:
+
+ABCDEFGHIJKLMNOPQRSTUVWXYZ
+abcdefghijklmnopqrstuvwxyz
+0123456789
+The quick brown fox jumps over the lazy dog.
+FR-12 — Download
+
+The user shall be able to download:
+
+MyFont.zip
+
+containing the generated font and supporting files.
+
+FR-13 — Processing Pipeline
+
+The backend shall expose a pipeline similar to:
+
+Upload
+ ↓
+Preprocess
+ ↓
+Align
+ ↓
+Segment
+ ↓
+Validate
+ ↓
+Normalize
+ ↓
+Vectorize
+ ↓
+Generate Font
+ ↓
+Generate Preview
+ ↓
+Package
+FR-14 — Existing Engine Integration
+
+The project shall be designed so that your existing Handwriting Detection Engine can be integrated for handwriting analysis/style representation.
+
+However, V1 must not depend on training a new ML model.
