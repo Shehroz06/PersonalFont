@@ -10,7 +10,7 @@ Source specs: `Initial_project_prompt.txt`, `Project_spec.txt`, `Functional_requ
 | 2 | Template generation + template JSON | done |
 | 3 | Image preprocessing | done |
 | 4 | Template alignment | done |
-| 5 | Character extraction | not started |
+| 5 | Character extraction | done |
 | 6 | Character validation | not started |
 | 7 | Glyph normalization | not started |
 | 8 | Bitmap → SVG | not started |
@@ -71,3 +71,20 @@ Generated artifacts: `templates/template_v1.pdf` (printable) and `templates/temp
 
 - `backend/tests/test_alignment.py` (9 tests, all passing): marker detection (found / not found), homography + confidence math in isolation, and `align_page_to_template` end-to-end — recovers a rotated/scaled/translated page, identifies the correct page among a multi-page template, and raises `AlignmentError` for no markers, too few markers, and markers belonging to a page absent from the given template. Synthetic fixtures in `tests/alignment_helpers.py`.
 - Manually verified against the *real* `template_v1.json`/`template_v1.pdf` (not just synthetic test fixtures): rendered page 1 via `pdftoppm`, simulated a photo (11° rotation, 0.92 scale, translation, onto a larger noisy background), and ran it through `align_page_to_template` — recovered with 96.4% confidence, 4/4 markers, 0.29px mean reprojection error, and the rectified output visually matches the original template layout exactly.
+
+## Phase 5 design decisions
+
+**Glyph filenames use `character_id`, not the raw character.** The spec's example (`A.png`) is illustrative, not literal: several punctuation characters in the V1 set (`"`, `:`, `?`) are invalid in Windows paths, and `A.png`/`a.png` collide on case-insensitive filesystems (macOS, Windows — a real risk since jobs may run cross-platform). `character_id` (e.g. `uppercase_A`, `punctuation_colon`) is already the template's stable, unique, filesystem-safe identifier for each glyph — reusing it avoids inventing a second naming scheme, and keeps every stage referring to glyphs the same way.
+
+**Extraction confidence is inherited from alignment, not recomputed.** `extract_glyphs` takes `extraction_confidence` as a parameter (the caller passes `AlignmentResult.confidence`) rather than deriving its own score — a crop's *location* is only as trustworthy as the homography that produced the image it's cropped from. Content-based quality (empty box, noise, multiple components, touching the crop boundary) is deliberately left to Phase 6 validation, which looks at pixels, not geometry.
+
+**Fixed padding around each template box** (`SegmentationConfig.padding_px`, default 6px): handwriting routinely overflows its printed guide box (ascenders, wide flourishes), so cropping to the box's exact bounds would clip real strokes. A crop that ends up touching its own boundary because of this is a signal for Phase 6 to flag, not something this stage should try to avoid by guessing at content.
+
+**A crop that lands entirely outside the aligned image raises `SegmentationError`** rather than being silently skipped or returning an empty image (spec §16: never silently discard a failed glyph) — in practice this means alignment went wrong in a way its own confidence check didn't catch, and the caller should be told which character and page, not just that "processing failed."
+
+**`app/services/jobs.py`** introduces the per-job directory layout from spec §15 (`uploads/processed/glyphs/svg/font/preview/logs`) now, since extraction is the first stage that actually writes job-scoped files to disk. `job_id` is restricted to uuid4-hex and validated before ever being joined into a path (`resolve_job_paths` raises `ValueError` on anything else), closing off path-traversal via a crafted id (spec §18). This module intentionally does *not* track job status/lifecycle — that's the API layer's job (Phase 11); here it's just safe path resolution.
+
+## Verified — Phase 5
+
+- `backend/tests/test_segmentation.py` (6 tests) and `backend/tests/test_jobs.py` (12 tests, incl. parametrized invalid-id cases) — 56 total tests passing across the whole suite. Covers: one file per element with correct metadata, character_id-based filenames (explicitly asserting the raw-character filename is *not* used), crop content correctness, padding behavior, the out-of-bounds `SegmentationError` path, an align→extract integration test, and job-id validation/isolation including a path-traversal attempt. Synthetic fixtures in `tests/segmentation_helpers.py` (built on `tests/alignment_helpers.py`).
+- Manually ran the real `template_v1.json` through align → extract on the same simulated rotated/noisy photo used for the Phase 4 manual check: all 56 characters on page 1 extracted into an isolated job directory (`jobs/{uuid}/glyphs/`), and visually confirmed a sample crop (`uppercase_A.png`) is a clean, correctly-boxed glyph.

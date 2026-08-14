@@ -18,7 +18,7 @@ MARGIN_PT = 20.0
 MARKER_SIZE_PT = 30.0
 
 
-def _markers_for_page(page_index: int) -> list[TemplateMarker]:
+def markers_for_page(page_index: int) -> list[TemplateMarker]:
     m = MARKER_SIZE_PT
     positions = {
         "top_left": (MARGIN_PT, PAGE_HEIGHT_PT - MARGIN_PT - m),
@@ -45,7 +45,7 @@ def build_minimal_template_document(num_pages: int, template_id: str = "template
     """A template with no character elements, just alignment markers —
     enough for alignment tests without dragging in the full character set."""
     pages = [
-        TemplatePage(page=page_index + 1, elements=[], markers=_markers_for_page(page_index))
+        TemplatePage(page=page_index + 1, elements=[], markers=markers_for_page(page_index))
         for page_index in range(num_pages)
     ]
     return TemplateDocument(
