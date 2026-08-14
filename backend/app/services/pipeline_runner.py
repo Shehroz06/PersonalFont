@@ -1,8 +1,15 @@
 """Phase 10: the end-to-end V1 pipeline (spec FR-13) — chains every stage
 built in Phases 3-9 for one job:
 
-    upload -> preprocess -> align -> extract -> validate -> normalize
-    -> vectorize -> generate font
+    preprocess -> align -> extract -> validate -> normalize -> vectorize
+    -> generate font
+
+Uploading (validating and safely saving page images into the job's
+uploads/ directory) is a separate, prior step — see
+app.services.uploads — since the API needs pages uploaded via one
+request well before processing is triggered by another, while the CLI
+does both back-to-back. run_pipeline always consumes images that are
+already sitting in job_paths.uploads.
 
 Preview and packaging (spec §12-13) are Phase 13's concern; this stops at
 a saved TTF/OTF pair.
@@ -17,7 +24,6 @@ passed validation, since neither case can produce a font at all.
 
 from __future__ import annotations
 
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -66,20 +72,6 @@ class PipelineResult:
     validations: list[ValidationResult]
     font: GeneratedFont
     log_path: str
-
-
-def _save_uploads(image_paths: list[Path], uploads_dir: Path) -> list[Path]:
-    """Copy each uploaded image into the job's own uploads/ directory
-    under a generated filename — never trust or reuse a caller-supplied
-    path/filename beyond this point (spec §18)."""
-    uploads_dir.mkdir(parents=True, exist_ok=True)
-    saved = []
-    for index, source in enumerate(image_paths, start=1):
-        suffix = source.suffix.lower() if source.suffix.lower() in (".jpg", ".jpeg", ".png") else ".jpg"
-        destination = uploads_dir / f"page_{index}{suffix}"
-        shutil.copyfile(source, destination)
-        saved.append(destination)
-    return saved
 
 
 def _process_page(
@@ -169,14 +161,21 @@ def _deduplicate_glyphs(glyphs: list[ExtractedGlyph], logger) -> list[ExtractedG
 
 def run_pipeline(
     job_id: str,
-    image_paths: list[Path],
+    page_image_paths: list[Path],
     template_document: TemplateDocument,
     job_paths: JobPaths,
     font_metadata: FontMetadata | None = None,
     preprocessing_config: PreprocessingConfig | None = None,
     font_config: FontGenerationConfig | None = None,
 ) -> PipelineResult:
-    if not image_paths:
+    """Process a job's already-uploaded page images (see
+    app.services.uploads for saving them there) into a font.
+
+    ``page_image_paths`` must already point at files inside
+    ``job_paths.uploads`` — this function reads and processes them, it
+    does not validate or copy them in from elsewhere.
+    """
+    if not page_image_paths:
         raise PipelineError("No page images were provided.")
 
     preprocessing_config = preprocessing_config or PreprocessingConfig()
@@ -184,13 +183,11 @@ def run_pipeline(
 
     job_paths.ensure_dirs()
     logger = get_job_logger(job_id, job_paths.logs)
-    log_event(logger, "JOB_CREATED", job_id=job_id, page_count=len(image_paths))
-
-    saved_images = _save_uploads(image_paths, job_paths.uploads)
+    log_event(logger, "JOB_CREATED", job_id=job_id, page_count=len(page_image_paths))
 
     pages: list[PageOutcome] = []
     all_glyphs: list[ExtractedGlyph] = []
-    for image_path in saved_images:
+    for image_path in page_image_paths:
         outcome, glyphs = _process_page(image_path, template_document, job_id, job_paths, preprocessing_config, logger)
         pages.append(outcome)
         all_glyphs.extend(glyphs)

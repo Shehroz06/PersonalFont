@@ -7,6 +7,7 @@ import pytest
 
 from app.services.jobs import generate_job_id, resolve_job_paths
 from app.services.pipeline_runner import PipelineError, run_pipeline
+from app.services.uploads import save_local_page_file
 from app.template_gen.loader import load_template_document
 from pipeline.preprocessing.config import PreprocessingConfig
 from tests.integration_helpers import render_clean_template_page, simulate_page_photo
@@ -47,9 +48,11 @@ def test_run_pipeline_raises_when_every_page_fails(tmp_path: Path, document):
 
     job_id = generate_job_id()
     job_paths = resolve_job_paths(tmp_path / "jobs", job_id)
+    job_paths.ensure_dirs()
+    saved = save_local_page_file(bad_path, job_paths.uploads)
 
     with pytest.raises(PipelineError):
-        run_pipeline(job_id, [bad_path], document, job_paths, preprocessing_config=PreprocessingConfig(working_dpi=DPI))
+        run_pipeline(job_id, [saved], document, job_paths, preprocessing_config=PreprocessingConfig(working_dpi=DPI))
 
 
 def test_run_pipeline_raises_when_no_glyph_passes_validation(tmp_path: Path, document):
@@ -62,11 +65,11 @@ def test_run_pipeline_raises_when_no_glyph_passes_validation(tmp_path: Path, doc
 
     job_id = generate_job_id()
     job_paths = resolve_job_paths(tmp_path / "jobs", job_id)
+    job_paths.ensure_dirs()
+    saved = save_local_page_file(photo_path, job_paths.uploads)
 
     with pytest.raises(PipelineError):
-        run_pipeline(
-            job_id, [photo_path], document, job_paths, preprocessing_config=PreprocessingConfig(working_dpi=DPI)
-        )
+        run_pipeline(job_id, [saved], document, job_paths, preprocessing_config=PreprocessingConfig(working_dpi=DPI))
 
 
 def test_run_pipeline_continues_after_one_bad_page(tmp_path: Path, document):
@@ -80,19 +83,22 @@ def test_run_pipeline_continues_after_one_bad_page(tmp_path: Path, document):
 
     job_id = generate_job_id()
     job_paths = resolve_job_paths(tmp_path / "jobs", job_id)
+    job_paths.ensure_dirs()
+    saved_good = save_local_page_file(good_path, job_paths.uploads)
+    saved_bad = save_local_page_file(bad_path, job_paths.uploads)
 
     result = run_pipeline(
         job_id,
-        [good_path, bad_path],
+        [saved_good, saved_bad],
         document,
         job_paths,
         preprocessing_config=PreprocessingConfig(working_dpi=DPI),
     )
 
     outcomes = {p.source_image: p for p in result.pages}
-    assert outcomes["page_1.jpg"].succeeded is True
-    assert outcomes["page_2.jpg"].succeeded is False
-    assert outcomes["page_2.jpg"].error is not None
+    assert outcomes[saved_good.name].succeeded is True
+    assert outcomes[saved_bad.name].succeeded is False
+    assert outcomes[saved_bad.name].error is not None
     assert result.font is not None  # the job still produced a font overall
 
 
@@ -102,10 +108,13 @@ def test_run_pipeline_deduplicates_the_same_page_uploaded_twice(tmp_path: Path, 
 
     job_id = generate_job_id()
     job_paths = resolve_job_paths(tmp_path / "jobs", job_id)
+    job_paths.ensure_dirs()
+    saved_1 = save_local_page_file(photo_path, job_paths.uploads)
+    saved_2 = save_local_page_file(photo_path, job_paths.uploads)  # same source, uploaded twice
 
     result = run_pipeline(
         job_id,
-        [photo_path, photo_path],
+        [saved_1, saved_2],
         document,
         job_paths,
         preprocessing_config=PreprocessingConfig(working_dpi=DPI),
@@ -115,30 +124,16 @@ def test_run_pipeline_deduplicates_the_same_page_uploaded_twice(tmp_path: Path, 
     assert len(character_ids) == len(set(character_ids))  # no duplicate entries survived
 
 
-def test_run_pipeline_saves_uploads_into_job_directory(tmp_path: Path, document):
-    page = document.pages[0]
-    photo_path = _write_good_photo(document, page, tmp_path, "my original filename.jpg")
-
-    job_id = generate_job_id()
-    job_paths = resolve_job_paths(tmp_path / "jobs", job_id)
-
-    run_pipeline(job_id, [photo_path], document, job_paths, preprocessing_config=PreprocessingConfig(working_dpi=DPI))
-
-    saved = list(job_paths.uploads.glob("*"))
-    assert len(saved) == 1
-    assert saved[0].name == "page_1.jpg"  # original filename not trusted/reused
-
-
 def test_run_pipeline_writes_structured_log_events(tmp_path: Path, document):
     page = document.pages[0]
     photo_path = _write_good_photo(document, page, tmp_path, "page_1.jpg")
 
     job_id = generate_job_id()
     job_paths = resolve_job_paths(tmp_path / "jobs", job_id)
+    job_paths.ensure_dirs()
+    saved = save_local_page_file(photo_path, job_paths.uploads)
 
-    result = run_pipeline(
-        job_id, [photo_path], document, job_paths, preprocessing_config=PreprocessingConfig(working_dpi=DPI)
-    )
+    result = run_pipeline(job_id, [saved], document, job_paths, preprocessing_config=PreprocessingConfig(working_dpi=DPI))
 
     lines = Path(result.log_path).read_text().strip().splitlines()
     events = [json.loads(line)["event"] for line in lines]

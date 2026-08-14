@@ -18,6 +18,7 @@ sys.path.insert(0, str(REPO_ROOT / "backend"))
 
 from app.services.jobs import generate_job_id, resolve_job_paths  # noqa: E402
 from app.services.pipeline_runner import PipelineError, run_pipeline  # noqa: E402
+from app.services.uploads import UploadValidationError, save_local_page_file  # noqa: E402
 from app.template_gen.loader import load_template_document  # noqa: E402
 from pipeline.font_generation.config import FontMetadata  # noqa: E402
 
@@ -41,13 +42,21 @@ def main() -> None:
     document = load_template_document(args.template)
     job_id = generate_job_id()
     job_paths = resolve_job_paths(args.jobs_root, job_id)
+    job_paths.ensure_dirs()
     metadata = FontMetadata(family_name=args.font_name, creator=args.creator, version=args.version)
 
     print(f"Job {job_id}")
-    print(f"Processing {len(args.pages)} page(s) against {document.template_id}...\n")
 
     try:
-        result = run_pipeline(job_id, args.pages, document, job_paths, font_metadata=metadata)
+        saved_pages = [save_local_page_file(page_path, job_paths.uploads) for page_path in args.pages]
+    except UploadValidationError as exc:
+        print(f"Upload failed: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Processing {len(saved_pages)} page(s) against {document.template_id}...\n")
+
+    try:
+        result = run_pipeline(job_id, saved_pages, document, job_paths, font_metadata=metadata)
     except PipelineError as exc:
         print(f"Pipeline failed: {exc}", file=sys.stderr)
         sys.exit(1)

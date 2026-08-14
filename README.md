@@ -6,29 +6,32 @@ V1 is a deterministic pipeline — no generative AI, no model training. See `Ini
 
 ## Status
 
-Phases 1-10 (scaffolding through the end-to-end CLI pipeline) are implemented. See `docs/architecture.md` for the full development order and current progress.
+Phases 1-11 (scaffolding through the FastAPI API) are implemented. See `docs/architecture.md` for the full development order and current progress.
 
 ## Repository layout
 
 ```
 backend/
   app/
-    template_gen/   # template layout, JSON schema, PDF rendering (Phase 2)
-    api/             # FastAPI routes (Phase 11)
-    models/          # Pydantic request/response models
-    services/        # job orchestration
+    template_gen/    # template layout, JSON schema, PDF rendering (Phase 2)
+    api/              # FastAPI routes + request/response schemas (Phase 11)
+    services/         # job lifecycle: paths, uploads, status, pipeline orchestration, logging
+    main.py           # FastAPI app
+    config.py         # env-driven settings
   pipeline/
     preprocessing/ alignment/ segmentation/ validation/
-    normalization/ vectorization/ font_generation/ preview/ packaging/
+    normalization/ vectorization/ font_generation/
+    ink_geometry.py   # shared binary-image helpers
   tests/
   requirements.txt
 frontend/            # Next.js app (Phase 12)
 templates/           # generated template_v1.pdf / template_v1.json
 jobs/                # per-job working directories (gitignored)
-output/              # generated font packages (gitignored)
 docs/
-scripts/
+scripts/             # generate_template.py, run_pipeline.py (CLI)
 ```
+
+Pydantic schemas live alongside the module that owns them (e.g. `pipeline/segmentation/schema.py`, `app/template_gen/schema.py`, `app/api/schemas.py`) rather than in one shared `models/` package — each stage's request/response shape is defined next to the code that produces it. `preview/`/`packaging/` pipeline packages and `output/` are still empty pending Phase 13.
 
 ## Setup
 
@@ -54,6 +57,14 @@ backend/.venv/bin/python scripts/run_pipeline.py page1.jpg page2.jpg \
 ```
 
 Runs preprocessing → alignment → character extraction → validation → normalization → vectorization → font generation on one or more uploaded page photos, and prints a per-page and per-character summary. Each run gets an isolated `jobs/{job_id}/` directory (uploads/processed/glyphs/svg/font/preview/logs) and a structured JSON-lines log at `jobs/{job_id}/logs/pipeline.log`. Preview generation and ZIP packaging (spec §12-13) aren't implemented yet — this produces the TTF/OTF only.
+
+## Run the API
+
+```bash
+backend/.venv/bin/uvicorn app.main:app --reload --app-dir backend
+```
+
+Serves the same pipeline over HTTP (interactive docs at `/docs`). Typical flow: `POST /api/jobs` → `POST /api/jobs/{id}/pages` (multipart upload) → `POST /api/jobs/{id}/process` (returns immediately; runs in the background) → poll `GET /api/jobs/{id}/status` until `"completed"` → `GET /api/jobs/{id}/validation` and `GET /api/jobs/{id}/download?format=ttf|otf`. `GET /api/templates` lists available templates. `/preview` isn't implemented yet (Phase 13).
 
 ## Run tests
 

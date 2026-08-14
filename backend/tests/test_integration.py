@@ -22,6 +22,7 @@ from fontTools.ttLib import TTFont
 
 from app.services.jobs import generate_job_id, resolve_job_paths
 from app.services.pipeline_runner import run_pipeline
+from app.services.uploads import save_local_page_file
 from app.template_gen.loader import load_template_document
 from pipeline.preprocessing.config import PreprocessingConfig
 from tests.integration_helpers import render_clean_template_page, simulate_page_photo
@@ -43,10 +44,12 @@ def test_full_pipeline_produces_a_valid_font(tmp_path: Path):
 
     job_id = generate_job_id()
     job_paths = resolve_job_paths(tmp_path / "jobs", job_id)
+    job_paths.ensure_dirs()
+    saved_path = save_local_page_file(photo_path, job_paths.uploads)
 
     result = run_pipeline(
         job_id,
-        [photo_path],
+        [saved_path],
         document,
         job_paths,
         preprocessing_config=PreprocessingConfig(working_dpi=DPI),
