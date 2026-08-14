@@ -18,9 +18,16 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 class Settings:
     jobs_root: Path = Path(os.environ.get("PERSONALFONT_JOBS_ROOT", str(REPO_ROOT / "jobs")))
     templates_root: Path = Path(os.environ.get("PERSONALFONT_TEMPLATES_ROOT", str(REPO_ROOT / "templates")))
+    # Next.js dev falls back to 3001 (then 3002, ...) whenever 3000 is
+    # already taken by something else on the machine — observed directly
+    # while manually testing Phase 12, where an unrelated dev server
+    # already held 3000. Defaulting to just one port silently breaks the
+    # frontend with an opaque CORS error the moment that happens.
     cors_origins: tuple[str, ...] = tuple(
         origin.strip()
-        for origin in os.environ.get("PERSONALFONT_CORS_ORIGINS", "http://localhost:3000").split(",")
+        for origin in os.environ.get(
+            "PERSONALFONT_CORS_ORIGINS", "http://localhost:3000,http://localhost:3001"
+        ).split(",")
         if origin.strip()
     )
 

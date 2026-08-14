@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 
 from app.api.deps import get_templates_root
 from app.api.schemas import TemplateSummary
@@ -41,3 +42,18 @@ def get_template(template_id: str, templates_root: Path = Depends(get_templates_
         raise HTTPException(status_code=404, detail=f"Template {template_id!r} not found.")
 
     return load_template_document(json_path)
+
+
+@router.get("/{template_id}/pdf")
+def download_template_pdf(template_id: str, templates_root: Path = Depends(get_templates_root)) -> FileResponse:
+    """The printable template (spec §16: DOWNLOAD TEMPLATE step) — served
+    directly from the same templates/ directory generate_template.py
+    writes to, not regenerated per-request."""
+    if not is_valid_template_id(template_id):
+        raise HTTPException(status_code=400, detail="Invalid template id.")
+
+    pdf_path = templates_root / f"{template_id}.pdf"
+    if not pdf_path.is_file():
+        raise HTTPException(status_code=404, detail=f"No PDF found for template {template_id!r}.")
+
+    return FileResponse(pdf_path, filename=pdf_path.name, media_type="application/pdf")

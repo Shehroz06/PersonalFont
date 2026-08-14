@@ -78,6 +78,20 @@ def test_get_template_rejects_path_traversal_id(client: TestClient):
     assert response.status_code in (400, 404)
 
 
+def test_download_template_pdf_returns_pdf(client: TestClient):
+    response = client.get("/api/templates/template_v1/pdf")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF-")
+
+
+def test_download_template_pdf_404_for_unknown_id(client: TestClient):
+    response = client.get("/api/templates/does_not_exist/pdf")
+
+    assert response.status_code == 404
+
+
 # --- job creation ----------------------------------------------------------
 
 

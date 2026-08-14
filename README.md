@@ -6,7 +6,7 @@ V1 is a deterministic pipeline — no generative AI, no model training. See `Ini
 
 ## Status
 
-Phases 1-11 (scaffolding through the FastAPI API) are implemented. See `docs/architecture.md` for the full development order and current progress.
+Phases 1-12 (scaffolding through the frontend) are implemented. See `docs/architecture.md` for the full development order and current progress.
 
 ## Repository layout
 
@@ -24,7 +24,7 @@ backend/
     ink_geometry.py   # shared binary-image helpers
   tests/
   requirements.txt
-frontend/            # Next.js app (Phase 12)
+frontend/            # Next.js app: upload -> processing -> review -> preview -> download (Phase 12)
 templates/           # generated template_v1.pdf / template_v1.json
 jobs/                # per-job working directories (gitignored)
 docs/
@@ -64,7 +64,17 @@ Runs preprocessing → alignment → character extraction → validation → nor
 backend/.venv/bin/uvicorn app.main:app --reload --app-dir backend
 ```
 
-Serves the same pipeline over HTTP (interactive docs at `/docs`). Typical flow: `POST /api/jobs` → `POST /api/jobs/{id}/pages` (multipart upload) → `POST /api/jobs/{id}/process` (returns immediately; runs in the background) → poll `GET /api/jobs/{id}/status` until `"completed"` → `GET /api/jobs/{id}/validation` and `GET /api/jobs/{id}/download?format=ttf|otf`. `GET /api/templates` lists available templates. `/preview` isn't implemented yet (Phase 13).
+Serves the same pipeline over HTTP (interactive docs at `/docs`). Typical flow: `POST /api/jobs` → `POST /api/jobs/{id}/pages` (multipart upload) → `POST /api/jobs/{id}/process` (returns immediately; runs in the background) → poll `GET /api/jobs/{id}/status` until `"completed"` → `GET /api/jobs/{id}/validation` and `GET /api/jobs/{id}/download?format=ttf|otf`. `GET /api/templates` lists available templates (and `/{id}/pdf` downloads the printable template). `/preview` isn't implemented yet (Phase 13).
+
+## Run the frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open the printed local URL (Next.js dev picks the next free port starting at 3000). Requires the API running separately at `http://localhost:8000` (override via `NEXT_PUBLIC_API_BASE_URL`); the backend's default CORS config already allows `localhost:3000` and `:3001`. See `frontend/README.md` for details.
 
 ## Run tests
 
