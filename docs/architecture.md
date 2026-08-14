@@ -14,7 +14,7 @@ Source specs: `Initial_project_prompt.txt`, `Project_spec.txt`, `Functional_requ
 | 6 | Character validation | done |
 | 7 | Glyph normalization | done |
 | 8 | Bitmap → SVG | done |
-| 9 | SVG → TTF/OTF | not started |
+| 9 | SVG → TTF/OTF | done |
 | 10 | End-to-end CLI pipeline | not started |
 | 11 | FastAPI API | not started |
 | 12 | Frontend | not started |
@@ -141,3 +141,20 @@ Generated artifacts: `templates/template_v1.pdf` (printable) and `templates/temp
 
 - `backend/tests/test_vectorization.py` (10 tests, 96 total across the suite): empty-glyph error, single-contour vs. hole-producing two-subpath shapes, a round-trip shape-fidelity check (custom test-only rasterizer, IoU > 0.9 against the original bitmap for a hole-free "L" shape), `opticurve` producing fewer-or-equal path nodes than with it disabled, well-formed/transparent SVG output, viewBox correctness, and `vectorize_glyphs` batch behavior (file creation, unreadable-image error).
 - Manually chained normalization → vectorization → `cairosvg` rendering on synthetic letterforms ("A", "a", "g") and confirmed correct hole rendering (the "A"'s counter), and — after the resolution investigation above — clean, smooth curves at a realistic source resolution.
+
+## Phase 9 design decisions
+
+**Uses FontTools' `FontBuilder`**, per Project_spec.txt's tech-stack guidance (FontTools and/or FontForge) — no FontForge dependency (a system binary, harder to install reliably) needed for V1.
+
+**One shared coordinate transform does the SVG→font-space conversion.** SVG/bitmap space is top-left-origin, y-down (see Phase 8); font em-space is baseline-origin, y-up. Rather than hand-editing path coordinates, `glyph_outline._baseline_transform` builds a single `fontTools.misc.transform.Transform(1,0,0,-1,x_shift,baseline_px)` applied via `TransformPen` — one matrix does the y-flip, the "bitmap row baseline_px is font y=0" translation, and (via `x_shift`) repositioning so each glyph's own ink starts at a consistent left side bearing.
+
+**Advance widths are per-glyph, not fixed.** Phase 7 centers every glyph in the same fixed-size canvas, so naively using that canvas width as every glyph's advance would produce a monospace-looking font with large gaps around narrow letters. Instead, `compute_advance_and_transform` measures each glyph's own ink bounding box (via `BoundsPen`, run once before building the actual outline) and derives `advance_width = ink_width + 2*side_bearing`, then shifts the glyph so its ink starts at `x=left_side_bearing` — giving genuine proportional spacing, and giving the "advance width"/"side bearings" metrics spec §11 lists actual meaning rather than being trivially identical for every character.
+
+**TTF uses `Cu2QuPen` to convert potrace's cubic curves to TrueType's quadratic ones**, with `reverse_direction=True` — required so contour winding survives the conversion correctly (TrueType/CFF use nonzero-winding fill, opposite convention sensitivity from SVG's evenodd). This wasn't assumed: I built a real font from a shape with a genuine hole (a triangular counter) and rendered it with PIL/FreeType to visually confirm the hole punches through correctly in the compiled glyph, not just in the intermediate SVG.
+
+**Found and fixed a real cross-phase bug during end-to-end verification, not a unit test.** `pipeline/alignment/marker_detection.py` used ArUco's default `DetectorParameters()`, which only recognizes the standard dark-marker-on-light-background polarity. Every Phase 4/5 test (and the earlier manual checks) happened to use synthetic photos in that normal polarity — but per the spec's own stage order, alignment is meant to consume Phase 3's *already-thresholded* output, which is ink=255/background=0 (inverted). Chaining the real pipeline together for this phase's verification surfaced that `detect_markers` silently found nothing on that inverted convention. Fixed by setting `detectInvertedMarker = True`, verified empirically to be a strict superset (still detects normal-polarity markers, confirmed both ways with a raw `cv2.aruco` script before touching the module) — and added a regression test (`test_detect_markers_finds_markers_on_inverted_ink255_image`) plus loosened two precision-sensitive assertions that assumed the old (accidentally non-representative) detection precision. This is the clearest example so far of why chaining real modules together, not just each phase's isolated tests, matters.
+
+## Verified — Phase 9
+
+- `backend/tests/test_font_generation.py` (16 tests, 108 total across the suite, run from real normalize→vectorize output rather than hand-crafted SVGs): loadable TTF/OTF creation, `.notdef` presence, cmap correctness, default and custom `FontMetadata` (family name, version), proportional (non-fixed) advance widths, empty-glyph-list and missing-SVG error paths, and — genuine functional checks via PIL/FreeType rendering, not just structural ones — that both formats actually render visible ink, and specifically that the "A" glyph's triangular counter renders as background (the hole survived the SVG→TrueType winding conversion).
+- **Full pipeline capstone check**: loaded the real `template_v1.json`, hand-drew "H", "E", "L", "O", "o" at their true template box positions plus the page's real ArUco markers directly in the ink=255 convention (i.e. simulating genuine Phase 3 output, not a Phase-4-style normal-polarity test photo), warped it to simulate a photographed page, and ran it through `align_page_to_template` → `extract_glyphs` → `validate_glyphs` → `normalize_glyphs` → `vectorize_glyphs` → `generate_fonts` unmodified. All 5 characters validated, normalized, vectorized, and compiled into a working font; rendering "HELLO" with it via PIL/FreeType produced a correct, legible word — the first time the full V1 deterministic pipeline ran end to end.

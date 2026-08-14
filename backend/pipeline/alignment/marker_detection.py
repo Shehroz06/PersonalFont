@@ -30,7 +30,17 @@ def detect_markers(image: np.ndarray) -> list[DetectedMarker]:
     gray = to_grayscale(image)
 
     aruco_dict = cv2.aruco.getPredefinedDictionary(ARUCO_DICTIONARY)
-    detector = cv2.aruco.ArucoDetector(aruco_dict, cv2.aruco.DetectorParameters())
+    params = cv2.aruco.DetectorParameters()
+    # By default, ArUco only looks for the standard dark-marker-on-light
+    # polarity. This pipeline's binary convention (pipeline.preprocessing.
+    # thresholding) is inverted — ink/marker=255, background=0 — so
+    # without this, detection silently returns nothing on real
+    # (preprocessed) input despite working fine in tests built from
+    # normal-polarity synthetic images. Verified empirically: this also
+    # still detects normal-polarity markers, so it's a strict superset,
+    # not a tradeoff.
+    params.detectInvertedMarker = True
+    detector = cv2.aruco.ArucoDetector(aruco_dict, params)
     corners, ids, _rejected = detector.detectMarkers(gray)
 
     if ids is None:
