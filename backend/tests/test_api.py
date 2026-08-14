@@ -194,6 +194,7 @@ def test_validation_and_download_unavailable_before_processing(client: TestClien
 
     assert client.get(f"/api/jobs/{job_id}/validation").status_code == 409
     assert client.get(f"/api/jobs/{job_id}/download").status_code == 409
+    assert client.get(f"/api/jobs/{job_id}/preview").status_code == 409
 
 
 # --- full round trip ----------------------------------------------------------
@@ -245,6 +246,29 @@ def test_full_flow_create_upload_process_status_validation_download(client: Test
     assert otf_response.status_code == 200
     assert len(otf_response.content) > 0
 
+    # default download (no format) is the full spec §13 package
+    import zipfile
+
+    zip_response = client.get(f"/api/jobs/{job_id}/download")
+    assert zip_response.status_code == 200
+    assert zip_response.headers["content-type"] in ("application/zip", "application/octet-stream")
+    with zipfile.ZipFile(io.BytesIO(zip_response.content)) as zf:
+        names = set(zf.namelist())
+    assert "metadata.json" in names
+    assert "README.txt" in names
+    assert "glyphs.zip" in names
+    assert any(name.endswith(".ttf") for name in names)
+    assert any(name.endswith(".otf") for name in names)
+
+    preview_png_response = client.get(f"/api/jobs/{job_id}/preview", params={"format": "png"})
+    assert preview_png_response.status_code == 200
+    assert preview_png_response.headers["content-type"] in ("image/png", "application/octet-stream")
+    assert len(preview_png_response.content) > 0
+
+    preview_pdf_response = client.get(f"/api/jobs/{job_id}/preview", params={"format": "pdf"})
+    assert preview_pdf_response.status_code == 200
+    assert preview_pdf_response.content.startswith(b"%PDF-")
+
 
 def test_download_rejects_invalid_format(client: TestClient, sample_photo_bytes: bytes):
     job_id = client.post("/api/jobs", json={}).json()["job_id"]
@@ -254,3 +278,19 @@ def test_download_rejects_invalid_format(client: TestClient, sample_photo_bytes:
     response = client.get(f"/api/jobs/{job_id}/download", params={"format": "exe"})
 
     assert response.status_code == 400
+
+
+def test_preview_rejects_invalid_format(client: TestClient, sample_photo_bytes: bytes):
+    job_id = client.post("/api/jobs", json={}).json()["job_id"]
+    client.post(f"/api/jobs/{job_id}/pages", files={"files": ("p.jpg", sample_photo_bytes, "image/jpeg")})
+    client.post(f"/api/jobs/{job_id}/process", json={})
+
+    response = client.get(f"/api/jobs/{job_id}/preview", params={"format": "svg"})
+
+    assert response.status_code == 400
+
+
+def test_preview_404_for_unknown_job(client: TestClient):
+    response = client.get("/api/jobs/00000000000000000000000000000000/preview")
+
+    assert response.status_code == 404

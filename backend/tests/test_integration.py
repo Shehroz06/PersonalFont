@@ -5,7 +5,10 @@
 
 (template alignment also runs between preprocessing and segmentation,
 since it's a required step in the actual pipeline architecture — spec
-§5 — not just a simplification in §19's summary diagram.)
+§5 — not just a simplification in §19's summary diagram. Preview
+generation and packaging, spec §12-13, also run as part of
+run_pipeline now — the assertions below check those outputs too, since
+this is the one test that exercises the entire real pipeline.)
 
 Unlike the other phases' tests, this one deliberately does *not* start
 from a pre-binarized/pre-aligned shortcut: it builds a synthetic
@@ -82,5 +85,23 @@ def test_full_pipeline_produces_a_valid_font(tmp_path: Path):
     otf_font = TTFont(str(otf_path))
     assert set(otf_font.getGlyphOrder()) == set(font.getGlyphOrder())
     otf_font.close()
+
+    # preview + packaging: real preview media and a downloadable package
+    preview_png = Path(result.preview_png_path)
+    preview_pdf = Path(result.preview_pdf_path)
+    assert preview_png.exists() and preview_png.stat().st_size > 0
+    assert preview_pdf.read_bytes().startswith(b"%PDF-")
+
+    package_zip = Path(result.package.zip_path)
+    assert package_zip.exists()
+    import zipfile
+
+    with zipfile.ZipFile(package_zip) as zf:
+        names = set(zf.namelist())
+    assert "metadata.json" in names
+    assert "README.txt" in names
+    assert "glyphs.zip" in names
+    assert any(name.endswith(".ttf") for name in names)
+    assert any(name.endswith(".otf") for name in names)
 
     assert Path(result.log_path).exists()

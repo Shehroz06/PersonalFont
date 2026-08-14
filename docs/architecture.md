@@ -18,7 +18,7 @@ Source specs: `Initial_project_prompt.txt`, `Project_spec.txt`, `Functional_requ
 | 10 | End-to-end CLI pipeline | done |
 | 11 | FastAPI API | done |
 | 12 | Frontend | done |
-| 13 | Preview + ZIP packaging | not started |
+| 13 | Preview + ZIP packaging | done |
 | 14 | Integration with Handwriting Detection Engine | not started |
 
 ## Phase 2 design decisions
@@ -221,3 +221,26 @@ Generated artifacts: `templates/template_v1.pdf` (printable) and `templates/temp
 - **Full browser-driven walkthrough** using Playwright against real `uvicorn` + `next dev` servers (not mocked, not `TestClient`): Home → Template → Upload (real file input with the same synthetic photographed-page JPEG used in the Phase 9/10 manual checks) → Processing (polled to real completion) → Character Review → Font Preview → Download, with `console --errors` and HTTP 4xx/5xx response logging active throughout the run. Result: zero console errors, zero network errors, and a downloaded TTF verified with `file` as valid TrueType data carrying the family name entered in the UI.
 - Screenshotted every step and visually confirmed: the step indicator tracks progress correctly; the character review grid renders the correct icon/color per character (✓ green for H/L/O/T, ⚠ amber for "I" — genuinely flagged too-small by validation, not staged — ✗ red for the rest); the font preview panel renders H/L/O/T in the actual hand-drawn glyphs while every other character correctly falls back to the system font, proving the live `FontFace` preview reflects the real font content rather than being a static mock.
 - This session had no `chromium-cli` skill available, so Playwright was installed standalone (via `npx`, using an already-cached Chromium binary) and driven with a small one-off Node script rather than the bundled REPL — noted here rather than silently treated as equivalent, since a future session should still prefer `chromium-cli`/a project run-skill if one exists.
+
+## Phase 13 design decisions
+
+**`GET /api/jobs/{id}/preview` now exists**, superseding the Phase 11/12 notes above that deliberately left it unimplemented — those were correct at the time (there was nothing real to serve) and are left as-is rather than rewritten, since they explain *why* it was withheld, which is still useful context for reading the API's history.
+
+**`pipeline/preview/` and `pipeline/packaging/` only read already-produced files; neither regenerates anything.** Preview rendering reads the compiled TTF (via PIL/FreeType for the PNG, via reportlab's `TTFont` embedding for the PDF) rather than re-deriving glyph shapes from the SVGs — the font itself is the single source of truth for what the user will actually see installed, so the preview should reflect exactly that, including its `.notdef` gaps for characters that didn't make it in. Packaging reads the font, preview media, and SVGs and only assembles a zip — it doesn't touch pixels or paths.
+
+**`generate_preview_pdf` uses a fresh UUID-based font id per call**, not a fixed name — reportlab's font registry (`pdfmetrics`) is process-global, and the API's background tasks mean many different jobs' fonts get rendered in the same long-lived process. A fixed id would either silently reuse a stale font registration or (depending on reportlab's internals) collide across concurrent jobs; a regression test (`test_generate_preview_pdf_can_be_called_multiple_times_in_one_process`) locks this in.
+
+**The preview intentionally shows `.notdef` boxes for missing characters, not a system-font fallback.** This is a real, deliberate difference from the frontend's live `FontFace` preview (Phase 12), which *does* fall back to the system font per normal browser behavior. The static preview.png/pdf's job is to show the user exactly what's in `MyFont.ttf`/`.otf` — substituting a different font there would misrepresent the deliverable. Confirmed visually: a 4-of-56-character test font's preview shows H/L/O/T as real glyphs and every other requested character as a tofu box, which is the honest, correct picture for that font.
+
+**`glyphs.zip` contains the SVG vector glyphs** (Phase 8's output), not the raw extracted PNGs or the normalized bitmaps — they're the most broadly useful individual-glyph asset (scalable, directly reusable in other design tools), and reusing them avoids re-deriving or duplicating anything already produced.
+
+**`GET /download` now defaults to `format=zip`** (the full spec §13 package) rather than requiring the caller to ask for it, while `format=ttf`/`format=otf` remain exactly as they were for direct raw-file access — this is what the frontend's in-browser `FontFace` preview (Phase 12) already depends on, so it was left unchanged rather than switched to unzip-on-the-client.
+
+**Frontend's download step now leads with the `.zip` package** as the primary call to action, with `.ttf`/`.otf`/`preview.png`/`preview.pdf` demoted to a secondary "individual files" group — matching spec §13's framing of the zip as the actual deliverable, while keeping the raw files available for users who specifically don't want the extras.
+
+## Verified — Phase 13
+
+- `backend/tests/test_preview.py` (7 tests) and `backend/tests/test_packaging.py` (6 tests), both built against a real font produced via the actual normalize→vectorize→generate_fonts chain (not hand-crafted fixtures): valid/readable PNG and PDF output, custom `PreviewConfig` honored, actionable errors for a missing font file, the multi-call registry regression guard, and — for packaging — exact zip member names, correct `metadata.json` contents (family/creator/version/template/valid/invalid character lists), `README.txt` wording for both the "some characters missing" and "everything included" cases, `glyphs.zip`'s SVG contents, and a `PackagingError` when a required input is missing.
+- `backend/tests/test_integration.py` (the required spec §19 test) now additionally asserts on the preview and package outputs, since it's the one test exercising the entire real pipeline end to end.
+- `backend/tests/test_api.py` grew 2 new endpoint tests (`/preview` unknown-job 404, invalid-format 400) and the full round-trip test now also downloads and inspects the default zip and both preview formats — 160 backend tests total, all passing.
+- **Manual, non-test verification**: ran the real pipeline (backend + frontend together, browser-driven as in Phase 12) end to end, then downloaded the actual zip over HTTP with `curl` and inspected it directly — `unzip -l` confirmed all 7 expected members; `metadata.json`, `README.txt`, and `glyphs.zip`'s contents were read and visually checked, not just asserted on in a test; `preview.png` and `preview.pdf` (the latter rendered to an image via `pdftoppm` for inspection) were visually confirmed to show the real font's actual character coverage, `.notdef` gaps included, with the PDF additionally carrying the correct family-name title. The frontend's updated Download step was screenshotted and confirmed to show the zip as primary with the individual files available underneath.

@@ -6,7 +6,7 @@ V1 is a deterministic pipeline — no generative AI, no model training. See `Ini
 
 ## Status
 
-Phases 1-12 (scaffolding through the frontend) are implemented. See `docs/architecture.md` for the full development order and current progress.
+Phases 1-13 (scaffolding through preview + ZIP packaging) are implemented. See `docs/architecture.md` for the full development order and current progress.
 
 ## Repository layout
 
@@ -21,6 +21,7 @@ backend/
   pipeline/
     preprocessing/ alignment/ segmentation/ validation/
     normalization/ vectorization/ font_generation/
+    preview/ packaging/   # preview PNG/PDF rendering, MyFont.zip assembly (Phase 13)
     ink_geometry.py   # shared binary-image helpers
   tests/
   requirements.txt
@@ -31,7 +32,7 @@ docs/
 scripts/             # generate_template.py, run_pipeline.py (CLI)
 ```
 
-Pydantic schemas live alongside the module that owns them (e.g. `pipeline/segmentation/schema.py`, `app/template_gen/schema.py`, `app/api/schemas.py`) rather than in one shared `models/` package — each stage's request/response shape is defined next to the code that produces it. `preview/`/`packaging/` pipeline packages and `output/` are still empty pending Phase 13.
+Pydantic schemas live alongside the module that owns them (e.g. `pipeline/segmentation/schema.py`, `app/template_gen/schema.py`, `app/api/schemas.py`) rather than in one shared `models/` package — each stage's request/response shape is defined next to the code that produces it.
 
 ## Setup
 
@@ -56,7 +57,7 @@ backend/.venv/bin/python scripts/run_pipeline.py page1.jpg page2.jpg \
     --font-name "My Handwriting" --creator "Your Name"
 ```
 
-Runs preprocessing → alignment → character extraction → validation → normalization → vectorization → font generation on one or more uploaded page photos, and prints a per-page and per-character summary. Each run gets an isolated `jobs/{job_id}/` directory (uploads/processed/glyphs/svg/font/preview/logs) and a structured JSON-lines log at `jobs/{job_id}/logs/pipeline.log`. Preview generation and ZIP packaging (spec §12-13) aren't implemented yet — this produces the TTF/OTF only.
+Runs preprocessing → alignment → character extraction → validation → normalization → vectorization → font generation → preview rendering → packaging on one or more uploaded page photos, and prints a per-page and per-character summary. Each run gets an isolated `jobs/{job_id}/` directory (uploads/processed/glyphs/svg/font/preview/logs) and a structured JSON-lines log at `jobs/{job_id}/logs/pipeline.log`. Produces `{name}.ttf`, `{name}.otf`, `preview.png`, `preview.pdf`, and `{name}.zip` (the full spec §13 package: both fonts, both previews, a zip of the individual SVG glyphs, metadata.json, and README.txt).
 
 ## Run the API
 
@@ -64,7 +65,7 @@ Runs preprocessing → alignment → character extraction → validation → nor
 backend/.venv/bin/uvicorn app.main:app --reload --app-dir backend
 ```
 
-Serves the same pipeline over HTTP (interactive docs at `/docs`). Typical flow: `POST /api/jobs` → `POST /api/jobs/{id}/pages` (multipart upload) → `POST /api/jobs/{id}/process` (returns immediately; runs in the background) → poll `GET /api/jobs/{id}/status` until `"completed"` → `GET /api/jobs/{id}/validation` and `GET /api/jobs/{id}/download?format=ttf|otf`. `GET /api/templates` lists available templates (and `/{id}/pdf` downloads the printable template). `/preview` isn't implemented yet (Phase 13).
+Serves the same pipeline over HTTP (interactive docs at `/docs`). Typical flow: `POST /api/jobs` → `POST /api/jobs/{id}/pages` (multipart upload) → `POST /api/jobs/{id}/process` (returns immediately; runs in the background) → poll `GET /api/jobs/{id}/status` until `"completed"` → `GET /api/jobs/{id}/validation`, `GET /api/jobs/{id}/preview?format=png|pdf`, and `GET /api/jobs/{id}/download?format=zip|ttf|otf` (`zip`, the full package, is the default). `GET /api/templates` lists available templates (and `/{id}/pdf` downloads the printable template).
 
 ## Run the frontend
 

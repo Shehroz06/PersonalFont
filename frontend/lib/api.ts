@@ -72,6 +72,10 @@ export function getValidation(jobId: string): Promise<ValidationResult[]> {
   return request<ValidationResult[]>(`/api/jobs/${encodeURIComponent(jobId)}/validation`);
 }
 
-export function downloadUrl(jobId: string, format: "ttf" | "otf"): string {
+export function downloadUrl(jobId: string, format: "ttf" | "otf" | "zip"): string {
   return `${API_BASE_URL}/api/jobs/${encodeURIComponent(jobId)}/download?format=${format}`;
+}
+
+export function previewUrl(jobId: string, format: "png" | "pdf"): string {
+  return `${API_BASE_URL}/api/jobs/${encodeURIComponent(jobId)}/preview?format=${format}`;
 }

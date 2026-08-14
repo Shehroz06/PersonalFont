@@ -1,8 +1,8 @@
-"""Phase 10: the end-to-end V1 pipeline (spec FR-13) — chains every stage
-built in Phases 3-9 for one job:
+"""Phases 10 & 13: the end-to-end V1 pipeline (spec FR-13) — chains every
+stage built in Phases 3-9 and 12-13 for one job:
 
     preprocess -> align -> extract -> validate -> normalize -> vectorize
-    -> generate font
+    -> generate font -> render preview -> package
 
 Uploading (validating and safely saving page images into the job's
 uploads/ directory) is a separate, prior step — see
@@ -10,9 +10,6 @@ app.services.uploads — since the API needs pages uploaded via one
 request well before processing is triggered by another, while the CLI
 does both back-to-back. run_pipeline always consumes images that are
 already sitting in job_paths.uploads.
-
-Preview and packaging (spec §12-13) are Phase 13's concern; this stops at
-a saved TTF/OTF pair.
 
 Resilience follows the same "one bad unit doesn't sink the batch"
 principle used throughout the pipeline (spec §16/NFR-06), just applied
@@ -38,9 +35,12 @@ from pipeline.font_generation.build import generate_fonts
 from pipeline.font_generation.config import FontGenerationConfig, FontMetadata
 from pipeline.font_generation.schema import GeneratedFont
 from pipeline.normalization.normalize import normalize_glyphs
+from pipeline.packaging.package import build_font_package
+from pipeline.packaging.schema import FontPackage
 from pipeline.preprocessing.config import PreprocessingConfig
 from pipeline.preprocessing.errors import PreprocessingError
 from pipeline.preprocessing.pipeline import preprocess_page
+from pipeline.preview.render import generate_preview_image, generate_preview_pdf
 from pipeline.segmentation.errors import SegmentationError
 from pipeline.segmentation.extract import extract_glyphs
 from pipeline.segmentation.schema import ExtractedGlyph
@@ -71,6 +71,9 @@ class PipelineResult:
     pages: list[PageOutcome]
     validations: list[ValidationResult]
     font: GeneratedFont
+    preview_png_path: str
+    preview_pdf_path: str
+    package: FontPackage
     log_path: str
 
 
@@ -223,6 +226,24 @@ def run_pipeline(
     font = generate_fonts(vectorized, job_paths.font, metadata=font_metadata, config=font_config)
     log_event(logger, "FONT_GENERATED", family_name=font.family_name, glyph_count=font.glyph_count)
 
+    preview_png_path = job_paths.preview / "preview.png"
+    preview_pdf_path = job_paths.preview / "preview.pdf"
+    generate_preview_image(Path(font.ttf_path), preview_png_path)
+    generate_preview_pdf(Path(font.ttf_path), preview_pdf_path, font_metadata.family_name)
+    log_event(logger, "PREVIEW_GENERATED", png=str(preview_png_path), pdf=str(preview_pdf_path))
+
+    package = build_font_package(
+        generated_font=font,
+        metadata=font_metadata,
+        template_id=template_document.template_id,
+        validations=validations,
+        svg_dir=job_paths.svg,
+        preview_png_path=preview_png_path,
+        preview_pdf_path=preview_pdf_path,
+        output_dir=job_paths.font,
+    )
+    log_event(logger, "PACKAGE_CREATED", zip_path=package.zip_path)
+
     log_event(logger, "JOB_COMPLETED", job_id=job_id)
 
     return PipelineResult(
@@ -230,5 +251,8 @@ def run_pipeline(
         pages=pages,
         validations=validations,
         font=font,
+        preview_png_path=str(preview_png_path),
+        preview_pdf_path=str(preview_pdf_path),
+        package=package,
         log_path=str(job_paths.logs / "pipeline.log"),
     )

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """CLI: run the full PersonalFont V1 pipeline end-to-end on uploaded page
-photographs and produce a TTF/OTF font.
+photographs and produce a downloadable font package (TTF, OTF, preview
+image/PDF, glyph SVGs, metadata) zipped together.
 
 Usage:
     backend/.venv/bin/python scripts/run_pipeline.py page1.jpg page2.jpg \
@@ -84,6 +85,9 @@ def main() -> None:
     )
     print(f"  TTF: {result.font.ttf_path}")
     print(f"  OTF: {result.font.otf_path}")
+    print(f"  Preview PNG: {result.preview_png_path}")
+    print(f"  Preview PDF: {result.preview_pdf_path}")
+    print(f"  Package: {result.package.zip_path}")
     print(f"\nLogs: {result.log_path}")
 
 

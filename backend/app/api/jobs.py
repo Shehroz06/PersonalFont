@@ -148,17 +148,40 @@ def get_validation(job_paths: JobPaths = Depends(get_job_paths)) -> list[Validat
     return read_validation_results(job_paths)
 
 
+_DOWNLOAD_MEDIA_TYPES = {"ttf": "font/ttf", "otf": "font/otf", "zip": "application/zip"}
+
+
 @router.get("/{job_id}/download")
-def download_font(format: str = "ttf", job_paths: JobPaths = Depends(get_job_paths)) -> FileResponse:
+def download_font(format: str = "zip", job_paths: JobPaths = Depends(get_job_paths)) -> FileResponse:
+    """Defaults to the full package (spec §13: MyFont.zip). ``format=ttf``
+    / ``format=otf`` remain available for fetching the raw font directly
+    (e.g. the frontend's in-browser FontFace preview)."""
     status = _require_status(job_paths)
     if status.state != "completed":
         raise HTTPException(status_code=409, detail=f"Job is {status.state}; no font is available yet.")
-    if format not in ("ttf", "otf"):
-        raise HTTPException(status_code=400, detail="format must be 'ttf' or 'otf'.")
+    if format not in _DOWNLOAD_MEDIA_TYPES:
+        raise HTTPException(status_code=400, detail="format must be 'zip', 'ttf', or 'otf'.")
 
     matches = list(job_paths.font.glob(f"*.{format}"))
     if not matches:
-        raise HTTPException(status_code=404, detail=f"No .{format} font file was found for this job.")
+        raise HTTPException(status_code=404, detail=f"No .{format} file was found for this job.")
 
-    media_type = "font/ttf" if format == "ttf" else "font/otf"
-    return FileResponse(matches[0], filename=matches[0].name, media_type=media_type)
+    return FileResponse(matches[0], filename=matches[0].name, media_type=_DOWNLOAD_MEDIA_TYPES[format])
+
+
+_PREVIEW_MEDIA_TYPES = {"png": "image/png", "pdf": "application/pdf"}
+
+
+@router.get("/{job_id}/preview")
+def get_preview(format: str = "png", job_paths: JobPaths = Depends(get_job_paths)) -> FileResponse:
+    status = _require_status(job_paths)
+    if status.state != "completed":
+        raise HTTPException(status_code=409, detail=f"Job is {status.state}; no preview is available yet.")
+    if format not in _PREVIEW_MEDIA_TYPES:
+        raise HTTPException(status_code=400, detail="format must be 'png' or 'pdf'.")
+
+    preview_path = job_paths.preview / f"preview.{format}"
+    if not preview_path.is_file():
+        raise HTTPException(status_code=404, detail=f"No preview.{format} was found for this job.")
+
+    return FileResponse(preview_path, filename=preview_path.name, media_type=_PREVIEW_MEDIA_TYPES[format])

@@ -29,8 +29,8 @@ The backend must be running separately (`backend/.venv/bin/uvicorn app.main:app 
 ## Notes
 
 - **Character review's three states (✓/⚠/✗)** are derived on the frontend (`components/StepCharacterReview.tsx`) from the backend's binary `valid`/`invalid` `ValidationResult`, since the backend doesn't have a distinct "warning" state: a character with zero ink (`confidence === 0`) reads as missing (✗); an invalid character with some ink but a failed check reads as needing another look (⚠); `valid: true` reads as done (✓). See the comment in that file for the full reasoning.
-- **Font preview** (`components/StepFontPreview.tsx`) downloads the real generated TTF, registers it as a `FontFace` from a blob URL, and renders sample text with it directly — not a server-rendered preview image. Phase 13's preview generation (for the downloadable package) is a separate, still-unimplemented concern.
-- `/preview`'s backend route doesn't exist yet (Phase 13), so there's no corresponding frontend call for it beyond the in-browser `FontFace` preview above.
+- **Font preview** (`components/StepFontPreview.tsx`) downloads the real generated TTF, registers it as a `FontFace` from a blob URL, and renders sample text with it directly — a live, interactive preview rather than the static `preview.png`/`preview.pdf` the backend also generates (spec §12; linked from the Download step). The two intentionally differ: the live preview falls back to the system font for characters missing from the font, while the static preview shows an honest `.notdef` gap — see `docs/architecture.md`'s Phase 13 notes.
+- **Download step** (`components/StepDownload.tsx`) leads with the full `.zip` package (spec §13) and offers the individual `.ttf`/`.otf`/`preview.png`/`preview.pdf` files underneath.
 
 ## Build
 
