@@ -9,7 +9,7 @@ Source specs: `Initial_project_prompt.txt`, `Project_spec.txt`, `Functional_requ
 | 1 | Project scaffolding | done |
 | 2 | Template generation + template JSON | done |
 | 3 | Image preprocessing | done |
-| 4 | Template alignment | not started |
+| 4 | Template alignment | done |
 | 5 | Character extraction | not started |
 | 6 | Character validation | not started |
 | 7 | Glyph normalization | not started |
@@ -56,3 +56,18 @@ Generated artifacts: `templates/template_v1.pdf` (printable) and `templates/temp
 
 - `backend/tests/test_preprocessing.py` (29 tests, all passing): each stage unit-tested in isolation (geometry ordering, page detection incl. failure case, perspective correction, autocrop, grayscale, noise removal, both thresholding methods, deskew angle estimation/correction incl. the large-angle skip), plus two integration-lite tests running `preprocess_page` end-to-end on a synthetic photographed page. Synthetic test fixtures live in `tests/preprocessing_helpers.py`.
 - Manually rendered a synthetic tilted/noisy photo through the full pipeline and visually confirmed the rectified output is properly de-rotated with ink strokes preserved as clean binary content.
+
+## Phase 4 design decisions
+
+**Alignment is independent of Phase 3's page detection.** `pipeline/alignment/` detects the printed ArUco markers directly (`marker_detection.py`) rather than depending on Phase 3's contour-based page/perspective correction. Markers give precise, identifiable correspondence points (4 corners each, with a decodable ID) that a generic paper-edge contour can't — they're what makes it possible to (a) recognize *which* template page a photo shows, and (b) fit an accurate homography under rotation/perspective/scale in one step (spec §6). Phase 3's output can still feed into this stage (e.g. its grayscale/denoised image), but alignment does not require it — it can run on a raw photo directly, and re-derives its own homography rather than trusting Phase 3's generic rectification for the final crop coordinates.
+
+**Marker ID encodes the page.** Since `layout.py` assigns `marker_id = page_index * 4 + corner_index`, `align.py` recovers the page a photo belongs to purely from which marker IDs were detected (majority vote across detected markers), before ever looking at pixel content. This means a caller doesn't need to know in advance which page of a multi-page submission they're aligning — one function handles all pages of a template.
+
+**Confidence is coverage × accuracy** (`confidence.py`): the fraction of expected markers actually matched, times a linear falloff based on mean reprojection error after fitting the homography. Both matter independently — 4/4 markers found but a blurry, poorly-fit photo should still score low, and vice versa. Below `min_confidence` (default 0.6) or below `min_matched_markers` (default 3, since 2 markers don't spread enough correspondence points across the page for a trustworthy perspective fit), `align_page_to_template` raises `AlignmentError` with the specific reason and an actionable next step, matching the spec §6 example message format.
+
+**New shared coordinate-conversion module** (`app/template_gen/coordinates.py`): converts template JSON's point-based, y-up boxes into pixel-based, y-down boxes at a caller-chosen DPI. This is needed by alignment (to know where markers are *expected* in the rectified image) and will be reused unchanged by character extraction (Phase 5, to crop each glyph's box) — written once rather than re-deriving the y-flip per stage. `PreprocessingConfig.output_size_px` and `ARUCO_DICTIONARY`/`POINTS_PER_INCH` were refactored to live in `layout.py` and be reused here and in `pdf_renderer.py`, rather than staying duplicated across Phase 2 and Phase 3 code.
+
+## Verified — Phase 4
+
+- `backend/tests/test_alignment.py` (16 tests, all passing): marker detection (found / not found), homography + confidence math in isolation, and `align_page_to_template` end-to-end — recovers a rotated/scaled/translated page, identifies the correct page among a multi-page template, and raises `AlignmentError` for no markers, too few markers, and markers belonging to a page absent from the given template. Synthetic fixtures in `tests/alignment_helpers.py`.
+- Manually verified against the *real* `template_v1.json`/`template_v1.pdf` (not just synthetic test fixtures): rendered page 1 via `pdftoppm`, simulated a photo (11° rotation, 0.92 scale, translation, onto a larger noisy background), and ran it through `align_page_to_template` — recovered with 96.4% confidence, 4/4 markers, 0.29px mean reprojection error, and the rectified output visually matches the original template layout exactly.

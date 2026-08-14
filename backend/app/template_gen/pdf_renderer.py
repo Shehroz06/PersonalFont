@@ -16,9 +16,7 @@ from reportlab.lib.colors import HexColor
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 
-from app.template_gen.layout import LayoutConfig, PageLayout
-
-ARUCO_DICTIONARY = cv2.aruco.DICT_4X4_50
+from app.template_gen.layout import ARUCO_DICTIONARY, LayoutConfig, PageLayout
 
 _GUIDE_COLOR = HexColor("#c9c9c9")
 _BOX_COLOR = HexColor("#333333")

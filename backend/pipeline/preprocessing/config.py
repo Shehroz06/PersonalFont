@@ -11,10 +11,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.template_gen.coordinates import page_size_px
 from app.template_gen.layout import LayoutConfig
 
 DEFAULT_WORKING_DPI = 200
-POINTS_PER_INCH = 72
 
 
 @dataclass(frozen=True)
@@ -27,6 +27,4 @@ class PreprocessingConfig:
 
     @property
     def output_size_px(self) -> tuple[int, int]:
-        width = round(self.page_width_pt / POINTS_PER_INCH * self.working_dpi)
-        height = round(self.page_height_pt / POINTS_PER_INCH * self.working_dpi)
-        return width, height
+        return page_size_px(self.page_width_pt, self.page_height_pt, self.working_dpi)

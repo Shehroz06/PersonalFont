@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+import cv2
 from reportlab.lib.pagesizes import A4
 
 from app.template_gen.character_set import CharacterSpec, get_character_set
@@ -20,6 +21,13 @@ from app.template_gen.character_set import CharacterSpec, get_character_set
 # folded into the marker id so a detector can recover which page (and which
 # corner) it is looking at from the marker id alone.
 MARKER_CORNERS = ("top_left", "top_right", "bottom_left", "bottom_right")
+
+# Shared across template generation (pdf_renderer) and alignment (Phase 4
+# marker detection) — both must agree on the same dictionary or generated
+# markers won't decode.
+ARUCO_DICTIONARY = cv2.aruco.DICT_4X4_50
+
+POINTS_PER_INCH = 72.0
 
 
 @dataclass(frozen=True)
