@@ -13,7 +13,7 @@ Source specs: `Initial_project_prompt.txt`, `Project_spec.txt`, `Functional_requ
 | 5 | Character extraction | done |
 | 6 | Character validation | done |
 | 7 | Glyph normalization | done |
-| 8 | Bitmap → SVG | not started |
+| 8 | Bitmap → SVG | done |
 | 9 | SVG → TTF/OTF | not started |
 | 10 | End-to-end CLI pipeline | not started |
 | 11 | FastAPI API | not started |
@@ -122,3 +122,22 @@ Generated artifacts: `templates/template_v1.pdf` (printable) and `templates/temp
 
 - `backend/tests/test_normalization.py` (12 tests, 86 total across the suite): canvas sizing, aspect-ratio preservation, tall-vs-short height classes (incl. ascender lowercase matching cap-height), baseline alignment for non-descenders, descender extension below baseline, horizontal centering, output stays strictly binary after resampling, the empty-glyph error path, and `normalize_glyphs` batch behavior (valid-only filtering, unknown character_id, unreadable image).
 - Manually rendered normalized synthetic letters ("A", "a", "g", "b") drawn as actual letterforms (not just rectangles) side by side and visually confirmed: "A" and "b" (ascender) reach the same cap-height, "a" sits shorter at x-height, all three bottoms align to one shared baseline, and "g" correctly descends below it.
+
+## Phase 8 design decisions
+
+**Uses potrace (via the pure-Python `potracer` package), not a hand-written tracer.** Project_spec.txt is explicit: use an established bitmap-to-vector approach rather than writing a Bezier-tracing algorithm from scratch. `potracer` reimplements the well-known Potrace algorithm in pure Python — no C extension or system library dependency (unlike `pypotrace`, which needs libpotrace/libagg), which matters for keeping the stack "boring and reliable" per the spec's own tech-stack guidance. `opticurve`/`alphamax`/`opttolerance` (exposed via `VectorizationConfig`) are what directly satisfy spec §10's "clean contours, smooth paths, avoid excessive nodes."
+
+**potrace inverts internally — confirmed empirically, not assumed.** `potrace.Bitmap.__init__` unconditionally calls `self.invert()` on whatever array it's given. Rather than trust the docs, I traced a known shape, got an unrecognizable result, and worked backward: passing `image == 0` (i.e. pre-inverting so ink=255 pixels are `False`, which the library's own invert then flips to the traced/`True` side) is what makes the ink=255/background=0 convention this pipeline uses actually get traced. This is called out explicitly in `trace.py`'s docstring so it doesn't get "fixed" back to the wrong-looking `image > 0` later.
+
+**Holes are handled via `fill-rule="evenodd"` with multiple `M...Z` subpaths in one `<path>`**, not by treating each potrace contour as a separate shape — this is what makes counters (the enclosed white space in "o", "A", "e", "g", ...) render as actual holes rather than solid blobs. Verified by tracing a shape with a genuine hole and confirming exactly 2 subpaths, then rendering it (via `cairosvg`, used only for manual/local verification — not added as a project dependency) and visually confirming the hole punches through correctly.
+
+**No coordinate flip between bitmap and SVG.** Both the source bitmap and SVG use top-left-origin, y-down coordinates, so pixel coordinates map to SVG user units 1:1 via a `viewBox="0 0 width height"` matching the source image's shape exactly — unlike the pt→px conversion in `app.template_gen.coordinates`, no y-axis flip is needed here. (Phase 9's font em-space *is* y-up, so that stage will need its own conversion — this module deliberately doesn't do it, keeping vectorization decoupled from font generation per spec §10.)
+
+**Transparent background is structural, not configured** — the SVG only ever contains a `<path>` element; no background rect is drawn, so there's nothing to make transparent.
+
+**Investigated visible jaggedness in an early manual check** on a synthetic 60-90px test shape (far smaller than a real extraction crop) and traced it to the low source resolution itself — cubic upsampling followed by re-binarization can only preserve a low-resolution shape's existing pixel staircase, not invent missing curve detail; disabling the re-binarization step made results *worse* (speckled), because it broke the strict ink=255/background=0 contract `bitmap_to_path_data` relies on. Re-tested at ~150-180px, matching what Phase 3's default 200 DPI actually produces from a template box, and confirmed the output is clean and smooth — the jaggedness was an artifact of an unrealistic test input, not a defect in the stage, but worth recording since it explains why `bitmap_to_path_data`'s docstring insists on the strict binary convention rather than accepting arbitrary grayscale.
+
+## Verified — Phase 8
+
+- `backend/tests/test_vectorization.py` (10 tests, 96 total across the suite): empty-glyph error, single-contour vs. hole-producing two-subpath shapes, a round-trip shape-fidelity check (custom test-only rasterizer, IoU > 0.9 against the original bitmap for a hole-free "L" shape), `opticurve` producing fewer-or-equal path nodes than with it disabled, well-formed/transparent SVG output, viewBox correctness, and `vectorize_glyphs` batch behavior (file creation, unreadable-image error).
+- Manually chained normalization → vectorization → `cairosvg` rendering on synthetic letterforms ("A", "a", "g") and confirmed correct hole rendering (the "A"'s counter), and — after the resolution investigation above — clean, smooth curves at a realistic source resolution.
