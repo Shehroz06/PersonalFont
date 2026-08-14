@@ -12,6 +12,7 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
+from pipeline.ink_geometry import ink_pixel_count
 from pipeline.segmentation.schema import ExtractedGlyph
 from pipeline.validation.config import ValidationConfig
 from pipeline.validation.errors import ValidationError
@@ -20,7 +21,6 @@ from pipeline.validation.rules import (
     check_foreground_ratio,
     check_glyph_size,
     check_touches_boundary,
-    ink_pixel_count,
 )
 from pipeline.validation.schema import ValidationResult
 

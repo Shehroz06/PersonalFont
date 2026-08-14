@@ -12,7 +12,7 @@ Source specs: `Initial_project_prompt.txt`, `Project_spec.txt`, `Functional_requ
 | 4 | Template alignment | done |
 | 5 | Character extraction | done |
 | 6 | Character validation | done |
-| 7 | Glyph normalization | not started |
+| 7 | Glyph normalization | done |
 | 8 | Bitmap → SVG | not started |
 | 9 | SVG → TTF/OTF | not started |
 | 10 | End-to-end CLI pipeline | not started |
@@ -107,3 +107,18 @@ Generated artifacts: `templates/template_v1.pdf` (printable) and `templates/temp
 
 - `backend/tests/test_validation.py` (18 tests, 74 total across the suite): each rule tested in isolation against purpose-built synthetic crops (`tests/validation_helpers.py` — clean stroke, blank, sparse dot, noise, boundary-touching, two-dot), `validate_glyph` tested end-to-end for the valid case (no warnings, high confidence) and each invalid case, and `validate_glyphs` tested for the mixed-batch and unreadable-file paths without raising.
 - Manually confirmed the ink-convention dependency behaves correctly both ways: feeding raw (non-thresholded) grayscale crops from the real Phase 5 extraction run correctly produces "excessive noise" (inverted convention reads background as foreground); feeding the same crop through `binarize_otsu` first produces a sensible result (flags the printed guide box/letter outline as touching-boundary and multi-component, which is accurate — it's a printed guide, not handwriting).
+
+## Phase 7 design decisions
+
+**A shared baseline, not just per-glyph bottom-alignment.** Naively cropping and centering each glyph independently (e.g. scaling every glyph's bounding box to the same height and bottom-aligning it) would make "p" sit on the same line as "A" incorrectly — "p" should hang below the line its neighbors sit on. `app.template_gen.character_set` gains a deliberately simple V1 classification (`is_tall_glyph`, `is_descender`): most of the set is bucketed into "tall" (cap-height: uppercase, digits, ascender lowercase like b/d/f/h/i/j/k/l/t, and tall punctuation like brackets/parens/quotes) or "short" (x-height: the remaining lowercase and punctuation), plus a separate descender flag (g/j/p/q/y, and comma's tail) that reserves extra room below the baseline. This is explicitly *not* per-glyph stroke analysis or real font metrics — it's the minimum classification needed for the rendered font's baseline to look coherent, and is called out as a known simplification future phases (e.g. Phase 14's handwriting engine integration) could refine.
+
+**Normalization outputs a fixed-size canvas bitmap** (`NormalizationConfig`, default 500×500px) rather than just a scaled crop — this is the "consistent font metrics" requirement from spec §9: every glyph shares one coordinate space (canvas size + baseline position) that Phase 8 (vectorization) and Phase 9 (font generation) can both rely on without re-deriving it.
+
+**Scale is bounded by whichever dimension is tighter** (height-class target vs. horizontal margin), preserving aspect ratio exactly rather than stretching to fill a fixed box — directly satisfying spec §9's "preserve aspect ratio" and "do not distort glyphs unnecessarily." Interpolation switches between `INTER_CUBIC` (upsampling — the common case, since crops are typically much smaller than the 500px canvas) and `INTER_AREA` (downsampling), and the result is re-binarized after resizing to keep the ink=255/background=0 convention strict for vectorization.
+
+**`normalize_glyphs` only processes glyphs Phase 6 marked valid**, silently excluding invalid ones from its own output — this is not the "silently discard a failed glyph" spec §16 warns against, since Phase 6 already surfaced them (with warnings) for the user to rewrite; they simply don't advance further. A failure reading an *already-validated* glyph's file, or an unrecognized `character_id`, is treated differently — those raise `NormalizationError`, since at that point the failure indicates a system-level problem, not ordinary bad handwriting data.
+
+## Verified — Phase 7
+
+- `backend/tests/test_normalization.py` (12 tests, 86 total across the suite): canvas sizing, aspect-ratio preservation, tall-vs-short height classes (incl. ascender lowercase matching cap-height), baseline alignment for non-descenders, descender extension below baseline, horizontal centering, output stays strictly binary after resampling, the empty-glyph error path, and `normalize_glyphs` batch behavior (valid-only filtering, unknown character_id, unreadable image).
+- Manually rendered normalized synthetic letters ("A", "a", "g", "b") drawn as actual letterforms (not just rectangles) side by side and visually confirmed: "A" and "b" (ascender) reach the same cap-height, "a" sits shorter at x-height, all three bottoms align to one shared baseline, and "g" correctly descends below it.

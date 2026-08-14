@@ -12,6 +12,7 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
+from pipeline.ink_geometry import ink_bounding_box, ink_pixel_count
 from pipeline.validation.config import ValidationConfig
 
 # Characters whose correctly-written form is more than one connected ink
@@ -51,19 +52,6 @@ def _trapezoidal_score(value: float, fail_low: float, ideal_low: float, ideal_hi
     if value > ideal_high:
         return (fail_high - value) / (fail_high - ideal_high)
     return 1.0
-
-
-def ink_pixel_count(image: np.ndarray) -> int:
-    return int(np.count_nonzero(image))
-
-
-def ink_bounding_box(image: np.ndarray) -> tuple[int, int, int, int] | None:
-    """Tight (x0, y0, x1, y1) bounding box of ink pixels, or None if empty."""
-    coords = cv2.findNonZero(image)
-    if coords is None:
-        return None
-    x, y, w, h = cv2.boundingRect(coords)
-    return x, y, x + w, y + h
 
 
 def check_foreground_ratio(image: np.ndarray, config: ValidationConfig) -> tuple[float, str | None]:
