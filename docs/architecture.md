@@ -8,7 +8,7 @@ Source specs: `Initial_project_prompt.txt`, `Project_spec.txt`, `Functional_requ
 |---|---|---|
 | 1 | Project scaffolding | done |
 | 2 | Template generation + template JSON | done |
-| 3 | Image preprocessing | not started |
+| 3 | Image preprocessing | done |
 | 4 | Template alignment | not started |
 | 5 | Character extraction | not started |
 | 6 | Character validation | not started |
@@ -37,3 +37,22 @@ Generated artifacts: `templates/template_v1.pdf` (printable) and `templates/temp
 
 - `backend/tests/test_template_gen.py`: character-set integrity, layout packing (no duplicates, no overlaps, in-bounds, markers don't collide with character boxes), and JSON/PDF generation. `10 passed`.
 - Rendered PDF visually inspected at 100 DPI (via `pdftoppm`) to confirm no visual overlap between header text, ArUco markers, and character grid.
+
+## Phase 3 design decisions
+
+**One module per pipeline stage** under `backend/pipeline/preprocessing/`: `page_detection.py`, `perspective_correction.py`, `crop.py`, `grayscale.py`, `noise_removal.py`, `thresholding.py`, `deskew.py`, each a small pure function operating on numpy arrays with no filesystem/job knowledge. `pipeline.py` only chains them (per §5's "do not create one huge processing function") — it contains no image-processing logic of its own.
+
+**Page detection vs. template alignment are kept separate.** `page_detection.py` finds the largest plausible 4-sided contour in a photo using classical edge/contour detection (Canny + `approxPolyDP`) — it knows nothing about the template's ArUco markers or character grid. Matching a detected page to a *specific* template version, scoring alignment confidence, and rejecting low-confidence pages with an actionable error (spec §6) is deferred to Phase 4, which will consume the ArUco markers laid down in Phase 2.
+
+**Binary image convention**: after `thresholding.py`, ink/foreground = 255 (white), background = 0 (black) — inverted from the original scan. This is documented once in `thresholding.py`'s docstring; `deskew.py` and (later) segmentation rely on it rather than re-deriving it.
+
+**`PreprocessingConfig.output_size_px`** derives the rectified image's pixel dimensions from the *same* `LayoutConfig` page size (points) used by template generation, plus a configurable working DPI (default 200) — avoiding a second, independently-hardcoded page size that could drift out of sync with the template JSON's coordinate space.
+
+**Deskew angle sign convention**: `cv2.minAreaRect`'s angle range has changed across OpenCV versions ([0, 90) currently). `estimate_skew_angle` normalizes it via `((raw + 45) % 90) - 45`, verified empirically (see `test_preprocessing.py`) to match the sign `cv2.getRotationMatrix2D` expects to *correct* the rotation, so no extra sign flip is needed downstream. Angles beyond `MAX_CORRECTABLE_SKEW_DEGREES` (15°) are treated as a likely detection failure rather than corrected, since perspective correction should have already removed gross rotation — large residual skew signals something upstream went wrong.
+
+**Errors are explicit** (`errors.py`: `PageDetectionError`, `DeskewError`), each raised with a specific, user-actionable message per spec §17 — never a bare "processing failed".
+
+## Verified — Phase 3
+
+- `backend/tests/test_preprocessing.py` (29 tests, all passing): each stage unit-tested in isolation (geometry ordering, page detection incl. failure case, perspective correction, autocrop, grayscale, noise removal, both thresholding methods, deskew angle estimation/correction incl. the large-angle skip), plus two integration-lite tests running `preprocess_page` end-to-end on a synthetic photographed page. Synthetic test fixtures live in `tests/preprocessing_helpers.py`.
+- Manually rendered a synthetic tilted/noisy photo through the full pipeline and visually confirmed the rectified output is properly de-rotated with ink strokes preserved as clean binary content.
