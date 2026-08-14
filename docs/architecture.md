@@ -11,7 +11,7 @@ Source specs: `Initial_project_prompt.txt`, `Project_spec.txt`, `Functional_requ
 | 3 | Image preprocessing | done |
 | 4 | Template alignment | done |
 | 5 | Character extraction | done |
-| 6 | Character validation | not started |
+| 6 | Character validation | done |
 | 7 | Glyph normalization | not started |
 | 8 | Bitmap → SVG | not started |
 | 9 | SVG → TTF/OTF | not started |
@@ -88,3 +88,22 @@ Generated artifacts: `templates/template_v1.pdf` (printable) and `templates/temp
 
 - `backend/tests/test_segmentation.py` (6 tests) and `backend/tests/test_jobs.py` (12 tests, incl. parametrized invalid-id cases) — 56 total tests passing across the whole suite. Covers: one file per element with correct metadata, character_id-based filenames (explicitly asserting the raw-character filename is *not* used), crop content correctness, padding behavior, the out-of-bounds `SegmentationError` path, an align→extract integration test, and job-id validation/isolation including a path-traversal attempt. Synthetic fixtures in `tests/segmentation_helpers.py` (built on `tests/alignment_helpers.py`).
 - Manually ran the real `template_v1.json` through align → extract on the same simulated rotated/noisy photo used for the Phase 4 manual check: all 56 characters on page 1 extracted into an isolated job directory (`jobs/{uuid}/glyphs/`), and visually confirmed a sample crop (`uppercase_A.png`) is a clean, correctly-boxed glyph.
+
+## Phase 6 design decisions
+
+**Checks score 0-1, not just pass/fail.** Each rule in `rules.py` (`check_foreground_ratio`, `check_glyph_size`, `check_touches_boundary`, `check_component_count`) returns a continuous score plus an optional warning string, rather than a boolean. `validate_glyph` combines the scores multiplicatively into the glyph's `confidence` — this is what lets the spec §8 example numbers (0.97, 0.31) arise naturally: one check being noticeably off drags confidence down proportionally, while several checks being individually fine multiply to something less than a flat 1.0, matching real photographed handwriting instead of a binary "good/bad" split.
+
+**Warnings and confidence are decoupled by a threshold** (`warning_score_threshold`, default 0.85): a score dipping slightly below 1.0 lowers confidence without being reported as a distinct problem; a check scoring below the threshold both lowers confidence *and* is named in `warnings`. Without this split, a glyph scoring e.g. 0.97 could never have an empty `warnings` list (any imperfection would immediately produce a warning message), which contradicts the spec's own valid-glyph example.
+
+**Component-count expectations are character-specific.** Most of the V1 character set is expected to be a single connected ink stroke (even a crossed "t" or "x" — the crossing strokes touch and merge into one component), but `i`, `j`, `:`, `;`, and `"` legitimately split into two. `expected_component_range()` in `rules.py` encodes this; not accounting for it would systematically penalize otherwise-correct handwriting for these five characters.
+
+**Consistent ink=255/background=0 input.** Every rule assumes the binary convention established in `pipeline.preprocessing.thresholding` (documented in `validate.py`'s module docstring) — validation is meant to run on the deskewed binary crop produced by extraction, not a raw grayscale scan. Feeding it the wrong convention isn't silently "handled"; it correctly (if uselessly) reports the image as excessive noise, since an inverted image reads as almost entirely foreground — verified manually (see below) rather than assumed.
+
+**One glyph can never fail the batch** (spec §8/§16/NFR-06): `validate_glyphs` wraps each glyph's read-and-score in a `try/except`, converting any failure (corrupt file, missing file) into an invalid `ValidationResult` with an explanatory warning instead of letting the exception propagate and abort the whole job.
+
+**Page-level checks ("invalid page", "incorrect template") are not reimplemented here.** They're already handled by Phase 4's `AlignmentError` (wrong template/page, insufficient markers) — spec §8 lists them alongside the glyph-level checks, but duplicating that logic in validation would just be two places disagreeing about the same failure mode.
+
+## Verified — Phase 6
+
+- `backend/tests/test_validation.py` (18 tests, 74 total across the suite): each rule tested in isolation against purpose-built synthetic crops (`tests/validation_helpers.py` — clean stroke, blank, sparse dot, noise, boundary-touching, two-dot), `validate_glyph` tested end-to-end for the valid case (no warnings, high confidence) and each invalid case, and `validate_glyphs` tested for the mixed-batch and unreadable-file paths without raising.
+- Manually confirmed the ink-convention dependency behaves correctly both ways: feeding raw (non-thresholded) grayscale crops from the real Phase 5 extraction run correctly produces "excessive noise" (inverted convention reads background as foreground); feeding the same crop through `binarize_otsu` first produces a sensible result (flags the printed guide box/letter outline as touching-boundary and multi-component, which is accurate — it's a printed guide, not handwriting).
