@@ -6,7 +6,7 @@ V1 is a deterministic pipeline — no generative AI, no model training. See `Ini
 
 ## Status
 
-Phase 1 (scaffolding) and Phase 2 (template generation) are implemented. See `docs/architecture.md` for the full development order and current progress.
+Phases 1-10 (scaffolding through the end-to-end CLI pipeline) are implemented. See `docs/architecture.md` for the full development order and current progress.
 
 ## Repository layout
 
@@ -45,6 +45,15 @@ backend/.venv/bin/python scripts/generate_template.py
 ```
 
 Produces `templates/template_v1.pdf` (print this and hand-write the characters) and `templates/template_v1.json` (the data-driven description of every character box and alignment marker the pipeline will read — never hardcode template coordinates elsewhere).
+
+## Run the full pipeline on photographed pages
+
+```bash
+backend/.venv/bin/python scripts/run_pipeline.py page1.jpg page2.jpg \
+    --font-name "My Handwriting" --creator "Your Name"
+```
+
+Runs preprocessing → alignment → character extraction → validation → normalization → vectorization → font generation on one or more uploaded page photos, and prints a per-page and per-character summary. Each run gets an isolated `jobs/{job_id}/` directory (uploads/processed/glyphs/svg/font/preview/logs) and a structured JSON-lines log at `jobs/{job_id}/logs/pipeline.log`. Preview generation and ZIP packaging (spec §12-13) aren't implemented yet — this produces the TTF/OTF only.
 
 ## Run tests
 

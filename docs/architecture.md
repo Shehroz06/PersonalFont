@@ -15,7 +15,7 @@ Source specs: `Initial_project_prompt.txt`, `Project_spec.txt`, `Functional_requ
 | 7 | Glyph normalization | done |
 | 8 | Bitmap → SVG | done |
 | 9 | SVG → TTF/OTF | done |
-| 10 | End-to-end CLI pipeline | not started |
+| 10 | End-to-end CLI pipeline | done |
 | 11 | FastAPI API | not started |
 | 12 | Frontend | not started |
 | 13 | Preview + ZIP packaging | not started |
@@ -158,3 +158,23 @@ Generated artifacts: `templates/template_v1.pdf` (printable) and `templates/temp
 
 - `backend/tests/test_font_generation.py` (16 tests, 108 total across the suite, run from real normalize→vectorize output rather than hand-crafted SVGs): loadable TTF/OTF creation, `.notdef` presence, cmap correctness, default and custom `FontMetadata` (family name, version), proportional (non-fixed) advance widths, empty-glyph-list and missing-SVG error paths, and — genuine functional checks via PIL/FreeType rendering, not just structural ones — that both formats actually render visible ink, and specifically that the "A" glyph's triangular counter renders as background (the hole survived the SVG→TrueType winding conversion).
 - **Full pipeline capstone check**: loaded the real `template_v1.json`, hand-drew "H", "E", "L", "O", "o" at their true template box positions plus the page's real ArUco markers directly in the ink=255 convention (i.e. simulating genuine Phase 3 output, not a Phase-4-style normal-polarity test photo), warped it to simulate a photographed page, and ran it through `align_page_to_template` → `extract_glyphs` → `validate_glyphs` → `normalize_glyphs` → `vectorize_glyphs` → `generate_fonts` unmodified. All 5 characters validated, normalized, vectorized, and compiled into a working font; rendering "HELLO" with it via PIL/FreeType produced a correct, legible word — the first time the full V1 deterministic pipeline ran end to end.
+
+## Phase 10 design decisions
+
+**`app/services/pipeline_runner.run_pipeline`** is the single orchestrator chaining every stage built in Phases 3-9 (upload → preprocess → align → extract → validate → normalize → vectorize → generate font) for one job. It's a *service*, not a pipeline stage — it owns job-directory lifecycle and cross-stage sequencing, but contains no image-processing logic of its own, mirroring the same "orchestrator only chains, stages do the work" split used within `pipeline.preprocessing.pipeline`.
+
+**Resilience is layered, not just per-glyph.** Validation already tolerates one bad *glyph*; this phase applies the same principle one level up, to *pages*: `_process_page` catches `PreprocessingError`/`AlignmentError`/`SegmentationError` and records a failed `PageOutcome` instead of raising, so one bad photo in a multi-page upload doesn't sink an otherwise-good submission (generalizing NFR-06 beyond just characters). The job only raises `PipelineError` outright in the two cases where no font *could* result: every page failed, or no glyph anywhere passed validation — both checked explicitly rather than let a downstream stage fail confusingly (e.g. `generate_fonts` on an empty list).
+
+**Duplicate character_ids across pages are resolved, not left ambiguous.** If the same page is uploaded twice (or, hypothetically, a future template revision reused a character_id across pages), `_deduplicate_glyphs` keeps the higher-confidence extraction and logs which was discarded — otherwise `generate_fonts` would receive two entries for the same glyph name/codepoint and silently let dict-overwrite semantics pick one arbitrarily.
+
+**Structured logging matches spec NFR-10's event names exactly** (`JOB_CREATED`, `PAGE_PREPROCESSED`, `PAGE_ALIGNED`, `GLYPHS_EXTRACTED`, `VALIDATION_COMPLETED`, `FONT_GENERATED`, `JOB_COMPLETED`), written as JSON-lines to `jobs/{id}/logs/pipeline.log` via `app/services/job_logging.py`, plus `PAGE_FAILED`/`JOB_FAILED`/`DUPLICATE_GLYPH_DISCARDED` so failures are just as observable as successes — this is also the first Phase to actually populate the `logs/` directory defined back in Phase 5's job layout.
+
+**Uploaded files are never trusted past the copy step** (spec §18): `_save_uploads` copies each input into `jobs/{id}/uploads/page_N.{ext}` under a generated name, and everything downstream operates on that copy — the original caller-supplied path/filename is never touched again.
+
+**`scripts/run_pipeline.py`** is a thin CLI wrapper (argument parsing, human-readable progress/summary printing) around `run_pipeline` — no logic lives in the script itself, keeping the actual orchestration reusable by Phase 11's API without duplication.
+
+## Verified — Phase 10
+
+- **Required integration test** (spec §19, `backend/tests/test_integration.py`): sample page → preprocessing → alignment → segmentation → validation → normalization → SVG → TTF/OTF, and — deliberately, unlike every other phase's tests — starting from a *synthetic photograph in standard scan polarity* (white paper, black ink, noisy rotated background) rather than a pre-binarized shortcut, so it exercises real Phase 3 page detection/perspective correction/thresholding/deskew, not just the stages downstream of them. Confirms a real, loadable TTF and OTF are produced, per the spec's explicit requirement.
+- `backend/tests/test_pipeline_runner.py` (7 tests, 116 total across the suite): empty input, every-page-fails, no-glyph-passes-validation (each raising `PipelineError`), one-bad-page-among-several (job still completes), duplicate-upload deduplication, upload filename safety, and structured log event coverage.
+- **Manually ran the actual CLI** (`scripts/run_pipeline.py`) end to end against a synthetic photo: correct per-page/per-character console output (56 extracted, 4 valid with clear per-character warnings for the rest), a working TTF/OTF, and a well-formed JSON-lines log file with all seven expected events in order. Rendered "HOTL" with the resulting font via PIL/FreeType from a *different* synthetic run and confirmed it's correct and legible — real signal survived the full, un-shortcut pipeline a second time, independent of the integration test.
