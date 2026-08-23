@@ -1,8 +1,11 @@
 from pathlib import Path
 
+from reportlab.pdfbase.pdfmetrics import stringWidth
+
 from app.template_gen.character_set import get_character_set
 from app.template_gen.layout import LayoutConfig, MARKER_CORNERS, compute_layout
 from app.template_gen.generate import generate_template
+from app.template_gen.pdf_renderer import _CAPTION_FONT_SIZE, _caption_for
 from app.template_gen.schema import build_template_document
 
 
@@ -118,3 +121,29 @@ def test_generate_template_writes_pdf_and_json(tmp_path: Path):
     on_disk = json_module.loads(json_path.read_text())
     assert on_disk["template_id"] == "template_v1"
     assert on_disk["character_count"] == document.character_count
+
+
+def test_caption_for_strips_punctuation_prefix():
+    assert _caption_for("punctuation_bracket_close") == "bracket_close"
+    assert _caption_for("punctuation_period") == "period"
+
+
+def test_caption_for_leaves_non_punctuation_ids_unchanged():
+    assert _caption_for("uppercase_A") == "uppercase_A"
+    assert _caption_for("lowercase_a") == "lowercase_a"
+    assert _caption_for("digit_0") == "digit_0"
+
+
+def test_every_caption_fits_within_the_box_width():
+    # Regression test: the caption below each box is the *only* thing
+    # identifying which character goes there (no guide glyph is drawn
+    # inside the box — see pdf_renderer.py). A caption wider than its own
+    # box overlaps its neighbors' captions and becomes illegible, which
+    # is exactly what happened with the raw character_id before
+    # _caption_for existed: several punctuation ids (up to ~71pt, e.g.
+    # "punctuation_bracket_close") didn't fit a 52pt-wide box.
+    config = LayoutConfig()
+    for spec in get_character_set():
+        caption = _caption_for(spec.character_id)
+        width = stringWidth(caption, "Helvetica", _CAPTION_FONT_SIZE)
+        assert width <= config.cell_width, f"{spec.character_id!r} caption {caption!r} ({width:.1f}pt) overflows"

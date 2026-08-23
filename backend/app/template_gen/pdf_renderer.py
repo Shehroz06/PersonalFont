@@ -47,6 +47,19 @@ _LABEL_COLOR = HexColor("#888888")
 # third-party image processing pipelines we don't control.
 _BOX_STROKE_COLOR = _GUIDE_COLOR
 
+_CAPTION_FONT_SIZE = 6
+
+
+def _caption_for(character_id: str) -> str:
+    """The printed label under a box — character_id with any category
+    prefix stripped, since the full id (e.g. "punctuation_bracket_close")
+    is wider than the box itself at a legible size. Verified against
+    every entry in the real character set: the longest surviving label
+    ("bracket_close", ~37pt) comfortably fits a 52pt-wide box, where
+    several full character_ids (up to ~71pt) did not."""
+    prefix, _sep, rest = character_id.partition("_")
+    return rest if prefix == "punctuation" and rest else character_id
+
 
 def _render_marker_image(marker_id: int, pixels: int = 300) -> ImageReader:
     aruco_dict = cv2.aruco.getPredefinedDictionary(ARUCO_DICTIONARY)
@@ -105,16 +118,18 @@ def _render_page(
         )
 
     # Character boxes — deliberately no background guide glyph traced
-    # inside; see the note above _BOX_STROKE_COLOR.
+    # inside; see the note above _BOX_STROKE_COLOR. Since the guide glyph
+    # is gone, this caption is now the *only* thing telling the writer
+    # which character goes in which box, so it has to actually fit.
     c.setLineWidth(1)
     for element in layout.elements:
         c.setStrokeColor(_BOX_STROKE_COLOR)
         c.rect(element.x, element.y, element.width, element.height, stroke=1, fill=0)
 
-        c.setFont("Helvetica", 6)
+        c.setFont("Helvetica", _CAPTION_FONT_SIZE)
         c.setFillColor(_LABEL_COLOR)
         c.drawCentredString(
             element.x + element.width / 2,
             element.y - 7,
-            element.character_id,
+            _caption_for(element.character_id),
         )
