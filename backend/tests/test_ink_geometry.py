@@ -57,16 +57,32 @@ def test_remove_small_components_drops_tiny_noise_speck():
 
 def test_remove_small_components_preserves_legitimate_dot_like_second_stroke():
     # Mimics an "i" or "j": a tall stem plus a proportionally-sized dot,
-    # at roughly the same relative size measured on a real scanned glyph
-    # (~41% of the main stroke's area) — must survive.
+    # at the actual ratio measured on a real scanned "j" (~43.85% of the
+    # stem's area — the exact value DEFAULT_MIN_COMPONENT_AREA_RATIO is
+    # calibrated to stay under) — must survive.
     image = np.zeros((200, 100), dtype=np.uint8)
-    cv2.rectangle(image, (40, 80), (60, 180), 255, -1)  # stem: 20x100 = 2000px
-    cv2.circle(image, (50, 40), 16, 255, -1)  # dot: ~804px ~= 40% of stem
+    cv2.rectangle(image, (40, 80), (60, 180), 255, -1)  # stem: ~21x101 = 2121px
+    cv2.circle(image, (50, 40), 18, 255, -1)  # dot: ~1017px ~= 48% of stem
 
     cleaned = remove_small_components(image)
 
     num_labels, _labels, stats, _ = cv2.connectedComponentsWithStats(cleaned, connectivity=8)
     assert num_labels == 3  # background + stem + dot, both survived
+
+
+def test_remove_small_components_drops_noise_below_the_real_j_ratio():
+    # The gap DEFAULT_MIN_COMPONENT_AREA_RATIO (0.40) is chosen to sit
+    # in: below the real "j" dot's ~43.85% ratio (must survive, see
+    # above), but a component at a clearly lower ratio — the range where
+    # real scan noise was actually observed — must still be removed.
+    image = np.zeros((200, 100), dtype=np.uint8)
+    cv2.rectangle(image, (40, 80), (60, 180), 255, -1)  # stem: ~21x101 = 2121px
+    cv2.circle(image, (50, 40), 14, 255, -1)  # speck: ~616px ~= 29% of stem
+
+    cleaned = remove_small_components(image)
+
+    num_labels, _labels, _stats, _ = cv2.connectedComponentsWithStats(cleaned, connectivity=8)
+    assert num_labels == 2  # background + stem only; the speck was dropped
 
 
 def test_remove_small_components_preserves_two_similar_sized_components():
@@ -104,4 +120,4 @@ def test_remove_small_components_drops_several_small_specks_around_one_stroke():
     areas = stats[1:, cv2.CC_STAT_AREA]
     assert num_labels >= 2
     assert areas.max() >= 6400
-    assert all(area >= 6400 * 0.15 for area in areas)
+    assert all(area >= 6400 * 0.40 for area in areas)

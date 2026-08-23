@@ -26,13 +26,27 @@ def ink_bounding_box(image: np.ndarray) -> tuple[int, int, int, int] | None:
 
 
 # Below this fraction of the largest component's area, a component is
-# treated as noise speck rather than a deliberate second stroke. Chosen
-# from real data, not guessed: on an actual photographed/scanned glyph
-# crop, a legitimate secondary stroke (e.g. the dot on a "j") measured at
-# ~41% of the main stroke's area, comfortably above this cutoff, while
-# scan-artifact speckle (JPEG/compression noise, a partially-surviving
-# background element) measured well under 10%.
-DEFAULT_MIN_COMPONENT_AREA_RATIO = 0.15
+# treated as noise speck rather than a deliberate second stroke.
+#
+# Calibrated against a real photographed/scanned 76-character page, not
+# guessed — and re-checked after an initial value (0.15) turned out to be
+# far too conservative: sweeping the threshold against every character's
+# *actual, expected* component count (including the 1-2 range for
+# i/j/:/;/") showed a hard ceiling at 0.4385, the real ratio of a
+# genuine "j" dot to its stem on that page. Above that ceiling, real
+# secondary strokes start being discarded — confirmed directly on
+# ":"/";" too, which stay safe only up to ~0.50-0.57. Below the ceiling,
+# 0.40 (with a deliberate safety margin under 0.4385, not the ceiling
+# itself) cleans up markedly more real noise than 0.15 did (67 of 76
+# characters landed at their correct component count on that test page,
+# vs 43 of 76 at 0.15) while still never touching any of the five
+# multi-stroke characters' legitimate second stroke. Some noise on that
+# same page exceeded even that ceiling (e.g. one single-stroke
+# character's residual speckle measured ~50-60% of its real stroke) —
+# no single global ratio can remove that without also risking a real
+# "j" dot, so it's intentionally left for validation to flag rather than
+# risk a false "valid" via an overly aggressive cutoff.
+DEFAULT_MIN_COMPONENT_AREA_RATIO = 0.40
 
 
 def remove_small_components(
