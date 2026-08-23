@@ -1,14 +1,31 @@
-"""Regression coverage for a real bug found manually while reviewing the
-template: the printed character box's outline must not survive
-thresholding, or it contaminates validation two ways — an empty box
-reads as a "valid" single-stroke glyph (the border alone looks like one),
-and a genuinely well-written character gets rejected as having "too many
-strokes" (the border becomes a second connected component alongside the
-real ink).
+"""Regression coverage for two real bugs found by manually reviewing the
+printed template against real scans, not by a test:
 
-Builds the same scene (box outline + guide glyph, optionally with
-handwriting drawn on top) that the real template PDF produces, using the
-actual colors from pdf_renderer.py, then runs it through the real
+1. The printed character box's outline must not survive thresholding, or
+   it contaminates validation two ways — an empty box reads as a "valid"
+   single-stroke glyph (the border alone looks like one), and a
+   genuinely well-written character gets rejected as having "too many
+   strokes" (the border becomes a second connected component alongside
+   the real ink). Fixed by drawing the border in a light grey that
+   disappears under thresholding, same idea as the guide glyph below.
+
+2. An earlier template version also drew a large light-grey guide glyph
+   inside the box, for the writer to trace over. That survived
+   thresholding on a *real* phone scan (Adobe Scan, iOS) even though it
+   reliably vanished on a directly-rendered PDF — scanning apps apply
+   their own contrast/sharpening enhancement before we ever see the
+   image, which can re-darken a light grey value we picked assuming a
+   clean, unprocessed source. It was removed entirely rather than
+   re-tuned to a different grey, since no fixed grey value can be
+   guaranteed safe against arbitrary third-party image processing we
+   don't control (see pdf_renderer.py's _BOX_STROKE_COLOR comment for
+   the full account, including the 53/56-characters-failed evidence).
+   There is nothing left to test for the guide glyph specifically — this
+   file's job now is to make sure it doesn't quietly come back.
+
+Builds the same scene (box outline only, optionally with handwriting
+drawn on top) that the real template PDF now produces, using the actual
+border color from pdf_renderer.py, then runs it through the real
 preprocessing/validation code — without depending on an external PDF
 rasterizer (poppler) in the automated suite; that tool was only ever used
 for manual, one-off visual checks elsewhere in this project.
@@ -33,7 +50,7 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-from app.template_gen.pdf_renderer import _BOX_STROKE_COLOR, _GUIDE_COLOR
+from app.template_gen.pdf_renderer import _BOX_STROKE_COLOR
 from pipeline.preprocessing.grayscale import to_grayscale
 from pipeline.preprocessing.noise_removal import remove_noise
 from pipeline.preprocessing.thresholding import binarize_otsu
@@ -71,9 +88,8 @@ def _render_page_scene(with_handwriting: bool) -> np.ndarray:
     _draw_corner_markers(canvas)
 
     cv2.rectangle(canvas, (BOX_X0, BOX_Y0), (BOX_X1, BOX_Y1), _hex_to_bgr(_BOX_STROKE_COLOR), 1)
-
-    guide_color = _hex_to_bgr(_GUIDE_COLOR)
-    cv2.putText(canvas, "A", (BOX_X0 + 40, BOX_Y1 - 40), cv2.FONT_HERSHEY_SIMPLEX, 4.0, guide_color, 6)
+    # Deliberately no guide glyph drawn inside the box — see module
+    # docstring, bug 2.
 
     if with_handwriting:
         ink = (30, 30, 30)
@@ -100,7 +116,7 @@ def _threshold_and_crop_box(with_handwriting: bool) -> np.ndarray:
 def test_empty_box_outline_does_not_survive_thresholding():
     crop = _threshold_and_crop_box(with_handwriting=False)
 
-    assert crop.max() == 0, "the box border/guide letter left ink behind on an unwritten box"
+    assert crop.max() == 0, "the box border left ink behind on an unwritten box"
 
 
 def test_empty_box_is_correctly_flagged_invalid():

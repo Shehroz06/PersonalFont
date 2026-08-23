@@ -1,11 +1,12 @@
 """Renders a PageLayout list to a printable PDF.
 
 Each character box is drawn as an empty rectangle — outlined in a light
-grey that disappears under thresholding, same as the guide glyph inside it
-(see _BOX_STROKE_COLOR) — with a small guide glyph so the writer knows
-what to write, plus an ID caption for debugging. ArUco markers are drawn
-at the four corners of every page so the alignment stage (Phase 4) can
-robustly recover the page's rotation, perspective and scale from a phone
+grey that disappears under thresholding (see _BOX_STROKE_COLOR) — plus an
+ID caption below it so the writer knows what to write. There is
+deliberately no background guide glyph traced inside the box itself; see
+the note below _BOX_STROKE_COLOR for why. ArUco markers are drawn at the
+four corners of every page so the alignment stage (Phase 4) can robustly
+recover the page's rotation, perspective and scale from a phone
 photograph.
 """
 
@@ -25,13 +26,25 @@ _HEADER_COLOR = HexColor("#333333")
 _LABEL_COLOR = HexColor("#888888")
 
 # The box outline must be light enough to disappear under Otsu
-# thresholding (pipeline.preprocessing.thresholding) the same way the
-# guide glyph does — verified empirically: a dark border survives
+# thresholding (pipeline.preprocessing.thresholding) the same way a light
+# grey guide glyph would — verified empirically: a dark border survives
 # thresholding as its own connected component, which makes an empty box
 # validate as if it were a real single-stroke glyph, and makes a
 # genuinely well-written character get rejected as "too many strokes"
-# once the border and the real ink are both picked up as ink. Matching
-# _GUIDE_COLOR exactly reuses a value already confirmed to vanish.
+# once the border and the real ink are both picked up as ink.
+#
+# An earlier version of this template also drew a large light-grey guide
+# letter inside the box for the writer to trace over. That was removed
+# entirely, not just lightened — verified against a real phone scan
+# (Adobe Scan, iOS): scanning apps apply their own contrast/sharpening
+# enhancement before we ever see the image, which can re-darken a
+# carefully chosen light grey back into something Otsu picks up as ink.
+# On that real scan, the large guide letter survived as visible ghosting
+# and caused 53 of 56 characters to fail validation as "too many
+# strokes," while the much thinner 1px box border (same nominal color)
+# did not reappear — the fix is to remove the large-area guide glyph
+# rather than trust a specific grey value to survive arbitrary
+# third-party image processing pipelines we don't control.
 _BOX_STROKE_COLOR = _GUIDE_COLOR
 
 
@@ -91,19 +104,12 @@ def _render_page(
             mask="auto",
         )
 
-    # Character boxes
+    # Character boxes — deliberately no background guide glyph traced
+    # inside; see the note above _BOX_STROKE_COLOR.
     c.setLineWidth(1)
     for element in layout.elements:
         c.setStrokeColor(_BOX_STROKE_COLOR)
         c.rect(element.x, element.y, element.width, element.height, stroke=1, fill=0)
-
-        c.setFont("Helvetica", element.height * 0.55)
-        c.setFillColor(_GUIDE_COLOR)
-        c.drawCentredString(
-            element.x + element.width / 2,
-            element.y + element.height * 0.22,
-            element.character,
-        )
 
         c.setFont("Helvetica", 6)
         c.setFillColor(_LABEL_COLOR)

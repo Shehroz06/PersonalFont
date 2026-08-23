@@ -2,6 +2,13 @@
 image using the template's coordinates, and save it into the job's glyphs
 directory.
 
+Each crop also gets small connected components removed (see
+pipeline.ink_geometry.remove_small_components) before saving — cleans up
+scan/compression noise speckle at the source, so every downstream
+consumer of the saved PNG (validation, normalization, the packaged
+glyphs.zip) sees the same clean signal rather than each having to
+re-derive it.
+
 Filenames use each element's template character_id (e.g. "uppercase_A.png",
 "punctuation_colon.png") rather than the raw character. The spec's example
 ("A.png") is illustrative — a literal character can't safely be a filename
@@ -22,6 +29,7 @@ import numpy as np
 
 from app.template_gen.coordinates import element_box_px
 from app.template_gen.schema import TemplatePage
+from pipeline.ink_geometry import remove_small_components
 from pipeline.segmentation.config import SegmentationConfig
 from pipeline.segmentation.errors import SegmentationError
 from pipeline.segmentation.schema import ExtractedGlyph, GlyphCropBox
@@ -73,6 +81,7 @@ def extract_glyphs(
             )
 
         crop = image[y0:y1, x0:x1]
+        crop = remove_small_components(crop, config.min_component_area_ratio)
 
         image_path = output_dir / f"{element.id}.png"
         cv2.imwrite(str(image_path), crop)
