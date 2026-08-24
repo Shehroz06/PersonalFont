@@ -31,3 +31,17 @@ class UploadPagesResponse(BaseModel):
     job_id: str
     pages_uploaded: int
     filenames: list[str]
+
+
+class RewriteCharacter(BaseModel):
+    character_id: str
+    character: str
+
+
+class RewriteListResponse(BaseModel):
+    job_id: str
+    characters: list[RewriteCharacter]
+
+
+class ExcludeRequest(BaseModel):
+    character_ids: list[str]

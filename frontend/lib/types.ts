@@ -44,3 +44,13 @@ export interface ProcessJobRequest {
   version: string;
   description: string;
 }
+
+export interface RewriteCharacter {
+  character_id: string;
+  character: string;
+}
+
+export interface RewriteListResponse {
+  job_id: string;
+  characters: RewriteCharacter[];
+}

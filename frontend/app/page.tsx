@@ -1,14 +1,24 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ApiError, createJob, getValidation, listTemplates, processJob, uploadPages } from "@/lib/api";
+import {
+  ApiError,
+  createFreeformJob,
+  createJob,
+  getValidation,
+  listTemplates,
+  processJob,
+  uploadPages,
+} from "@/lib/api";
 import type { ProcessJobRequest, TemplateSummary, ValidationResult } from "@/lib/types";
 import StepIndicator, { type Step } from "@/components/StepIndicator";
 import StepHome from "@/components/StepHome";
 import StepDownloadTemplate from "@/components/StepDownloadTemplate";
 import StepUploadPages from "@/components/StepUploadPages";
+import StepUploadFreeform from "@/components/StepUploadFreeform";
 import StepProcessing from "@/components/StepProcessing";
 import StepCharacterReview from "@/components/StepCharacterReview";
+import StepRewrite from "@/components/StepRewrite";
 import StepFontPreview from "@/components/StepFontPreview";
 import StepDownload from "@/components/StepDownload";
 
@@ -28,11 +38,16 @@ export default function Page() {
 
   const [jobId, setJobId] = useState<string | null>(null);
   const [creatingJob, setCreatingJob] = useState(false);
+  const [jobIsFreeform, setJobIsFreeform] = useState(false);
 
   const [files, setFiles] = useState<File[]>([]);
   const [metadata, setMetadata] = useState<ProcessJobRequest>(DEFAULT_METADATA);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const [freeformFile, setFreeformFile] = useState<File | null>(null);
+  const [freeformSubmitting, setFreeformSubmitting] = useState(false);
+  const [freeformError, setFreeformError] = useState<string | null>(null);
 
   const [processingError, setProcessingError] = useState<string | null>(null);
   const [validations, setValidations] = useState<ValidationResult[]>([]);
@@ -53,6 +68,7 @@ export default function Page() {
     try {
       const status = await createJob(selectedTemplateId);
       setJobId(status.job_id);
+      setJobIsFreeform(false);
       setStep("upload");
     } catch (err) {
       setTemplateError(err instanceof ApiError ? err.message : "Could not start a job.");
@@ -76,11 +92,28 @@ export default function Page() {
     }
   }
 
+  async function handleSubmitFreeform() {
+    if (!freeformFile) return;
+    setFreeformSubmitting(true);
+    setFreeformError(null);
+    try {
+      const status = await createFreeformJob(freeformFile, metadata);
+      setJobId(status.job_id);
+      setJobIsFreeform(true);
+      setStep("freeform-processing");
+    } catch (err) {
+      setFreeformError(err instanceof ApiError ? err.message : "Could not upload the photo.");
+    } finally {
+      setFreeformSubmitting(false);
+    }
+  }
+
   async function handleProcessingCompleted() {
     if (!jobId) return;
     try {
       const results = await getValidation(jobId);
       setValidations(results);
+      setProcessingError(null);
       setStep("review");
     } catch (err) {
       const message =
@@ -90,80 +123,167 @@ export default function Page() {
     }
   }
 
+  async function handleExcludeProcessingCompleted() {
+    if (!jobId) return;
+    try {
+      const results = await getValidation(jobId);
+      setValidations(results);
+      setProcessingError(null);
+      setStep("preview");
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : "Font finished but validation results couldn't be loaded.";
+      setProcessingError(message);
+      setStep("review");
+    }
+  }
+
   function handleRestart() {
     setStep("home");
     setJobId(null);
+    setJobIsFreeform(false);
     setFiles([]);
+    setFreeformFile(null);
     setMetadata(DEFAULT_METADATA);
     setUploadError(null);
+    setFreeformError(null);
     setProcessingError(null);
     setValidations([]);
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-12 sm:px-10">
-      {step !== "home" && <StepIndicator current={step} />}
+    <>
+      <header className="sticky top-0 z-10 grid grid-cols-[1fr_minmax(0,auto)_1fr] items-center gap-4 border-b border-stone-200 bg-background/95 px-6 py-3 backdrop-blur sm:px-10 dark:border-stone-800">
+        <button
+          type="button"
+          onClick={handleRestart}
+          className="justify-self-start text-sm font-semibold tracking-tight text-stone-900 transition-colors hover:text-violet-700 dark:text-stone-50 dark:hover:text-violet-400"
+        >
+          PersonalFont
+        </button>
+        {step !== "home" && <StepIndicator current={step} />}
+        <div />
+      </header>
 
-      {step === "home" && <StepHome onStart={() => setStep("template")} />}
+      <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-12 sm:px-10">
 
-      {step === "template" && (
-        <StepDownloadTemplate
-          templates={templates}
-          selectedTemplateId={selectedTemplateId}
-          onSelectTemplate={setSelectedTemplateId}
-          onContinue={handleContinueFromTemplate}
-          onBack={() => setStep("home")}
-          loading={creatingJob}
-          error={templateError}
-        />
-      )}
+        {step === "home" && (
+          <StepHome onStartTemplate={() => setStep("template")} onStartFreeform={() => setStep("freeform-upload")} />
+        )}
 
-      {step === "upload" && jobId && (
-        <StepUploadPages
-          files={files}
-          onFilesChange={setFiles}
-          metadata={metadata}
-          onMetadataChange={setMetadata}
-          onSubmit={handleUploadAndProcess}
-          onBack={() => setStep("template")}
-          submitting={submitting}
-          error={uploadError}
-        />
-      )}
+        {step === "template" && (
+          <StepDownloadTemplate
+            templates={templates}
+            selectedTemplateId={selectedTemplateId}
+            onSelectTemplate={setSelectedTemplateId}
+            onContinue={handleContinueFromTemplate}
+            onBack={() => setStep("home")}
+            loading={creatingJob}
+            error={templateError}
+          />
+        )}
 
-      {step === "processing" && jobId && (
-        <StepProcessing
-          jobId={jobId}
-          onCompleted={handleProcessingCompleted}
-          onFailed={(message) => {
-            setProcessingError(message);
-            setStep("upload");
-            setUploadError(message);
-          }}
-        />
-      )}
+        {step === "upload" && jobId && (
+          <StepUploadPages
+            files={files}
+            onFilesChange={setFiles}
+            metadata={metadata}
+            onMetadataChange={setMetadata}
+            onSubmit={handleUploadAndProcess}
+            onBack={() => setStep("template")}
+            submitting={submitting}
+            error={uploadError}
+          />
+        )}
 
-      {step === "review" && (
-        <StepCharacterReview
-          validations={validations}
-          onContinue={() => setStep("preview")}
-          onBack={() => setStep("upload")}
-        />
-      )}
+        {step === "freeform-upload" && (
+          <StepUploadFreeform
+            file={freeformFile}
+            onFileChange={setFreeformFile}
+            metadata={metadata}
+            onMetadataChange={setMetadata}
+            onSubmit={handleSubmitFreeform}
+            onBack={() => setStep("home")}
+            submitting={freeformSubmitting}
+            error={freeformError}
+          />
+        )}
 
-      {step === "preview" && jobId && (
-        <StepFontPreview jobId={jobId} onContinue={() => setStep("download")} onBack={() => setStep("review")} />
-      )}
+        {step === "processing" && jobId && (
+          <StepProcessing
+            jobId={jobId}
+            onCompleted={handleProcessingCompleted}
+            onFailed={(message) => {
+              setProcessingError(message);
+              setUploadError(message);
+              setStep("upload");
+            }}
+          />
+        )}
 
-      {step === "download" && jobId && (
-        <StepDownload jobId={jobId} familyName={metadata.family_name} onRestart={handleRestart} />
-      )}
+        {step === "freeform-processing" && jobId && (
+          <StepProcessing
+            jobId={jobId}
+            onCompleted={handleProcessingCompleted}
+            onFailed={(message) => {
+              setProcessingError(message);
+              setFreeformError(message);
+              setStep("freeform-upload");
+            }}
+          />
+        )}
 
-      {processingError && step !== "upload" && (
-        <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
-          {processingError}
-        </p>
-      )}
-    </div>
+        {step === "review" && jobId && (
+          <StepCharacterReview
+            jobId={jobId}
+            validations={validations}
+            onContinue={() => setStep("preview")}
+            onBack={() => setStep(jobIsFreeform ? "freeform-upload" : "upload")}
+            onRewrite={() => setStep("rewrite")}
+            onExcluded={() => setStep("exclude-processing")}
+          />
+        )}
+
+        {step === "rewrite" && jobId && (
+          <StepRewrite jobId={jobId} onSubmitted={() => setStep("rewrite-processing")} onBack={() => setStep("review")} />
+        )}
+
+        {step === "rewrite-processing" && jobId && (
+          <StepProcessing
+            jobId={jobId}
+            onCompleted={handleProcessingCompleted}
+            onFailed={(message) => {
+              setProcessingError(message);
+              setStep("rewrite");
+            }}
+          />
+        )}
+
+        {step === "exclude-processing" && jobId && (
+          <StepProcessing
+            jobId={jobId}
+            onCompleted={handleExcludeProcessingCompleted}
+            onFailed={(message) => {
+              setProcessingError(message);
+              setStep("review");
+            }}
+          />
+        )}
+
+        {step === "preview" && jobId && (
+          <StepFontPreview jobId={jobId} onContinue={() => setStep("download")} onBack={() => setStep("review")} />
+        )}
+
+        {step === "download" && jobId && (
+          <StepDownload jobId={jobId} familyName={metadata.family_name} onRestart={handleRestart} />
+        )}
+
+        {processingError && step !== "upload" && step !== "freeform-upload" && (
+          <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
+            {processingError}
+          </p>
+        )}
+      </div>
+    </>
   );
 }

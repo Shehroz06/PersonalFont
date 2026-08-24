@@ -2,13 +2,30 @@ export type Step =
   | "home"
   | "template"
   | "upload"
+  | "freeform-upload"
   | "processing"
+  | "freeform-processing"
   | "review"
+  | "rewrite"
+  | "rewrite-processing"
+  | "exclude-processing"
   | "preview"
   | "download";
 
+// Steps that don't get their own slot in the indicator (freeform upload
+// is a variant of "upload"; rewriting/excluding are loops back onto
+// "review", not a forward step) map onto the nearest one that does, so
+// the indicator always shows something sensible instead of nothing
+// highlighted.
+const DISPLAY_STEP: Partial<Record<Step, Step>> = {
+  "freeform-upload": "upload",
+  "freeform-processing": "processing",
+  rewrite: "review",
+  "rewrite-processing": "review",
+  "exclude-processing": "review",
+};
+
 const STEPS: { key: Step; label: string }[] = [
-  { key: "home", label: "Home" },
   { key: "template", label: "Template" },
   { key: "upload", label: "Upload" },
   { key: "processing", label: "Processing" },
@@ -18,10 +35,11 @@ const STEPS: { key: Step; label: string }[] = [
 ];
 
 export default function StepIndicator({ current }: { current: Step }) {
-  const currentIndex = STEPS.findIndex((s) => s.key === current);
+  const displayed = DISPLAY_STEP[current] ?? current;
+  const currentIndex = STEPS.findIndex((s) => s.key === displayed);
 
   return (
-    <ol className="flex w-full flex-wrap items-center gap-x-1 gap-y-2 text-sm">
+    <ol className="flex flex-wrap items-center justify-center gap-x-1 gap-y-2 text-sm">
       {STEPS.map((step, index) => {
         const isCurrent = index === currentIndex;
         const isDone = index < currentIndex;
@@ -30,10 +48,10 @@ export default function StepIndicator({ current }: { current: Step }) {
             <span
               className={`flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-xs font-medium ${
                 isCurrent
-                  ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                  ? "bg-violet-700 text-white dark:bg-violet-500 dark:text-stone-950"
                   : isDone
-                    ? "bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200"
-                    : "bg-zinc-100 text-zinc-400 dark:bg-zinc-800 dark:text-zinc-500"
+                    ? "bg-stone-200 text-stone-700 dark:bg-stone-700 dark:text-stone-200"
+                    : "bg-stone-100 text-stone-400 dark:bg-stone-800 dark:text-stone-500"
               }`}
             >
               {index + 1}
@@ -41,14 +59,14 @@ export default function StepIndicator({ current }: { current: Step }) {
             <span
               className={
                 isCurrent
-                  ? "font-medium text-zinc-900 dark:text-zinc-100"
-                  : "text-zinc-500 dark:text-zinc-400"
+                  ? "font-medium text-stone-900 dark:text-stone-100"
+                  : "text-stone-500 dark:text-stone-400"
               }
             >
               {step.label}
             </span>
             {index < STEPS.length - 1 && (
-              <span className="mx-1 text-zinc-300 dark:text-zinc-600">&rarr;</span>
+              <span className="mx-1 text-stone-300 dark:text-stone-600">&rarr;</span>
             )}
           </li>
         );

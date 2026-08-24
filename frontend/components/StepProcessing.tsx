@@ -58,16 +58,16 @@ export default function StepProcessing({
 
   return (
     <div className="flex flex-col items-center gap-6 py-16 text-center">
-      <div className="h-10 w-10 animate-spin rounded-full border-4 border-zinc-200 border-t-zinc-900 dark:border-zinc-700 dark:border-t-zinc-100" />
+      <div className="h-10 w-10 animate-spin rounded-full border-4 border-stone-200 border-t-violet-600 dark:border-stone-700 dark:border-t-violet-500" />
       <div>
-        <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+        <h2 className="text-xl font-semibold text-stone-900 dark:text-stone-50">
           Processing your pages
         </h2>
-        <p className="mt-2 max-w-sm text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="mt-2 max-w-sm text-sm text-stone-500 dark:text-stone-400">
           Aligning pages, extracting characters, validating, and building your font. This
           usually takes under a minute.
         </p>
-        <p className="mt-4 text-xs text-zinc-400 dark:text-zinc-500">{elapsedSeconds}s elapsed</p>
+        <p className="mt-4 text-xs text-stone-400 dark:text-stone-500">{elapsedSeconds}s elapsed</p>
       </div>
     </div>
   );

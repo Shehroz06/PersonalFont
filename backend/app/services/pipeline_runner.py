@@ -162,6 +162,92 @@ def _deduplicate_glyphs(glyphs: list[ExtractedGlyph], logger) -> list[ExtractedG
     return list(best_by_id.values())
 
 
+def finalize_job(
+    job_id: str,
+    job_paths: JobPaths,
+    pages: list[PageOutcome],
+    all_glyphs: list[ExtractedGlyph],
+    template_id: str,
+    font_metadata: FontMetadata,
+    font_config: FontGenerationConfig | None,
+    logger,
+    force_invalid_ids: frozenset[str] = frozenset(),
+) -> PipelineResult:
+    """Shared tail: validate -> normalize -> vectorize -> generate font ->
+    preview -> package. A fresh job (run_pipeline, ``all_glyphs`` from a
+    template scan), a rewrite (app.services.rewrite_runner.run_rewrite,
+    ``all_glyphs`` merging a freeform rewrite into a job's existing crops),
+    and a manual exclusion (run_exclude) all need this exact sequence — a
+    job's font is always built from *all* of its currently-valid glyphs
+    together, not incrementally per character, so there's no cheaper path
+    for any of these than re-running it in full.
+
+    ``force_invalid_ids`` overrides real Phase 6 validation for specific
+    character_ids the user chose to leave out of the font on purpose
+    (run_exclude) — distinct from an actual validation failure, so it
+    gets its own warning text rather than reusing a check's message.
+    """
+    validations = validate_glyphs(all_glyphs)
+    if force_invalid_ids:
+        validations = [
+            v.model_copy(update={"valid": False, "warnings": ["Manually excluded"]})
+            if v.character_id in force_invalid_ids
+            else v
+            for v in validations
+        ]
+    valid_count = sum(1 for v in validations if v.valid)
+    log_event(
+        logger,
+        "VALIDATION_COMPLETED",
+        total=len(validations),
+        valid=valid_count,
+        invalid=len(validations) - valid_count,
+    )
+
+    normalized = normalize_glyphs(all_glyphs, validations, job_paths.processed)
+    if not normalized:
+        log_event(logger, "JOB_FAILED", reason="no_valid_glyphs")
+        raise PipelineError(
+            "No characters passed validation, so no font can be generated. Please review the "
+            "validation warnings and re-upload clearer photographs of the affected pages."
+        )
+
+    vectorized = vectorize_glyphs(normalized, job_paths.svg)
+    font = generate_fonts(vectorized, job_paths.font, metadata=font_metadata, config=font_config)
+    log_event(logger, "FONT_GENERATED", family_name=font.family_name, glyph_count=font.glyph_count)
+
+    preview_png_path = job_paths.preview / "preview.png"
+    preview_pdf_path = job_paths.preview / "preview.pdf"
+    generate_preview_image(Path(font.ttf_path), preview_png_path)
+    generate_preview_pdf(Path(font.ttf_path), preview_pdf_path, font_metadata.family_name)
+    log_event(logger, "PREVIEW_GENERATED", png=str(preview_png_path), pdf=str(preview_pdf_path))
+
+    package = build_font_package(
+        generated_font=font,
+        metadata=font_metadata,
+        template_id=template_id,
+        validations=validations,
+        svg_dir=job_paths.svg,
+        preview_png_path=preview_png_path,
+        preview_pdf_path=preview_pdf_path,
+        output_dir=job_paths.font,
+    )
+    log_event(logger, "PACKAGE_CREATED", zip_path=package.zip_path)
+
+    log_event(logger, "JOB_COMPLETED", job_id=job_id)
+
+    return PipelineResult(
+        job_id=job_id,
+        pages=pages,
+        validations=validations,
+        font=font,
+        preview_png_path=str(preview_png_path),
+        preview_pdf_path=str(preview_pdf_path),
+        package=package,
+        log_path=str(job_paths.logs / "pipeline.log"),
+    )
+
+
 def run_pipeline(
     job_id: str,
     page_image_paths: list[Path],
@@ -204,55 +290,6 @@ def run_pipeline(
 
     all_glyphs = _deduplicate_glyphs(all_glyphs, logger)
 
-    validations = validate_glyphs(all_glyphs)
-    valid_count = sum(1 for v in validations if v.valid)
-    log_event(
-        logger,
-        "VALIDATION_COMPLETED",
-        total=len(validations),
-        valid=valid_count,
-        invalid=len(validations) - valid_count,
-    )
-
-    normalized = normalize_glyphs(all_glyphs, validations, job_paths.processed)
-    if not normalized:
-        log_event(logger, "JOB_FAILED", reason="no_valid_glyphs")
-        raise PipelineError(
-            "No characters passed validation, so no font can be generated. Please review the "
-            "validation warnings and re-upload clearer photographs of the affected pages."
-        )
-
-    vectorized = vectorize_glyphs(normalized, job_paths.svg)
-    font = generate_fonts(vectorized, job_paths.font, metadata=font_metadata, config=font_config)
-    log_event(logger, "FONT_GENERATED", family_name=font.family_name, glyph_count=font.glyph_count)
-
-    preview_png_path = job_paths.preview / "preview.png"
-    preview_pdf_path = job_paths.preview / "preview.pdf"
-    generate_preview_image(Path(font.ttf_path), preview_png_path)
-    generate_preview_pdf(Path(font.ttf_path), preview_pdf_path, font_metadata.family_name)
-    log_event(logger, "PREVIEW_GENERATED", png=str(preview_png_path), pdf=str(preview_pdf_path))
-
-    package = build_font_package(
-        generated_font=font,
-        metadata=font_metadata,
-        template_id=template_document.template_id,
-        validations=validations,
-        svg_dir=job_paths.svg,
-        preview_png_path=preview_png_path,
-        preview_pdf_path=preview_pdf_path,
-        output_dir=job_paths.font,
-    )
-    log_event(logger, "PACKAGE_CREATED", zip_path=package.zip_path)
-
-    log_event(logger, "JOB_COMPLETED", job_id=job_id)
-
-    return PipelineResult(
-        job_id=job_id,
-        pages=pages,
-        validations=validations,
-        font=font,
-        preview_png_path=str(preview_png_path),
-        preview_pdf_path=str(preview_pdf_path),
-        package=package,
-        log_path=str(job_paths.logs / "pipeline.log"),
+    return finalize_job(
+        job_id, job_paths, pages, all_glyphs, template_document.template_id, font_metadata, font_config, logger
     )

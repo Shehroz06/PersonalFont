@@ -1,6 +1,8 @@
 import type {
   JobStatus,
   ProcessJobRequest,
+  RewriteCharacter,
+  RewriteListResponse,
   TemplateSummary,
   UploadPagesResponse,
   ValidationResult,
@@ -70,6 +72,41 @@ export function getJobStatus(jobId: string): Promise<JobStatus> {
 
 export function getValidation(jobId: string): Promise<ValidationResult[]> {
   return request<ValidationResult[]>(`/api/jobs/${encodeURIComponent(jobId)}/validation`);
+}
+
+export function getCharacterSet(): Promise<RewriteCharacter[]> {
+  return request<RewriteCharacter[]>("/api/character-set");
+}
+
+export function createFreeformJob(file: File, metadata: ProcessJobRequest): Promise<JobStatus> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("family_name", metadata.family_name);
+  formData.append("creator", metadata.creator);
+  formData.append("version", metadata.version);
+  formData.append("description", metadata.description);
+  return request<JobStatus>("/api/jobs/freeform", { method: "POST", body: formData });
+}
+
+export function getRewriteList(jobId: string): Promise<RewriteListResponse> {
+  return request<RewriteListResponse>(`/api/jobs/${encodeURIComponent(jobId)}/rewrite-list`);
+}
+
+export function submitRewrite(jobId: string, file: File): Promise<JobStatus> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return request<JobStatus>(`/api/jobs/${encodeURIComponent(jobId)}/rewrite`, {
+    method: "POST",
+    body: formData,
+  });
+}
+
+export function excludeCharacters(jobId: string, characterIds: string[]): Promise<JobStatus> {
+  return request<JobStatus>(`/api/jobs/${encodeURIComponent(jobId)}/exclude`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ character_ids: characterIds }),
+  });
 }
 
 export function downloadUrl(jobId: string, format: "ttf" | "otf" | "zip"): string {

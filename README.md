@@ -1,8 +1,19 @@
-# PersonalFont
+gi# PersonalFont
 
-Turn your own handwriting into a real, installable font (TTF/OTF). Print a template, fill it in, photograph the pages, and PersonalFont aligns, extracts, validates, and vectorizes each character into a font — deterministically, no generative AI.
+Turn your own handwriting into a real, installable font (TTF/OTF).
 
-**Status:** Phases 1-13 complete (scaffolding through preview + ZIP packaging). See [`docs/architecture.md`](docs/architecture.md) for the full development order, design decisions, and verification notes. Phase 14 (integration with the Handwriting Detection Engine) is future work, out of scope for V1.
+Write your characters, photograph the page, and PersonalFont aligns, extracts, validates, and vectorizes each one into a font. The whole pipeline is deterministic, classical image processing — Otsu thresholding, connected-component analysis, ArUco-marker alignment, contour tracing — no generative AI, no invented glyphs. What you write is what you get.
+
+## Features
+
+- **Two ways to capture handwriting**
+  - **Plain paper** — write every character on any blank sheet, in a shown order, and photograph it. No printer required.
+  - **Printed template** — download a guided PDF with one box per character, fill it in, and photograph each page.
+- **Automatic validation** — every character is checked for size, ink density, stray marks, and touching the box edge; flagged characters are called out with a specific reason.
+- **Rewrite without reprinting** — fix just the flagged characters on a blank sheet of paper and re-submit, no matter which capture mode you started with.
+- **Exclude characters on purpose** — leave a character out of the font even if it technically passed validation.
+- **Live in-browser preview** — see your real generated font rendered with your own sample text before downloading.
+- **Full download package** — TTF, OTF, PNG/PDF previews, individual SVG glyphs, metadata, and a README, all zipped together.
 
 ## Prerequisites
 
@@ -13,6 +24,10 @@ Turn your own handwriting into a real, installable font (TTF/OTF). Print a templ
 No database, no external services — everything runs locally on the filesystem.
 
 ## Quick start
+
+**One-liner:** `git clone <this-repo-url> personal-font && cd personal-font && ./run.sh` — sets up both the backend and frontend if needed, and starts them together (stop with Ctrl+C).
+
+Or step by step:
 
 Every command below is run from the **repository root** unless a `cd` is shown — copy-paste the whole block for a given step.
 
@@ -26,7 +41,7 @@ python3 -m venv backend/.venv
 backend/.venv/bin/pip install -r backend/requirements.txt
 ```
 
-**2. Generate the handwriting template**
+**2. Generate the handwriting template** (only needed for the printed-template capture mode)
 
 ```bash
 backend/.venv/bin/python scripts/generate_template.py
@@ -50,7 +65,7 @@ npm install
 npm run dev
 ```
 
-Open the URL it prints (Next.js picks the next free port starting at 3000). Walk through the wizard: download the template → upload photographed pages → review flagged characters → preview → download your font.
+Open the URL it prints (Next.js picks the next free port starting at 3000). Walk through the wizard: write your characters (plain paper or a printed template) → upload the photo(s) → review any flagged characters → preview → download your font.
 
 No frontend? Skip step 4 and drive the same pipeline from the CLI instead — see [Usage](#usage) below.
 
@@ -71,10 +86,9 @@ backend/
     ink_geometry.py   # shared binary-image helpers
   tests/
   requirements.txt
-frontend/            # Next.js app: upload -> processing -> review -> preview -> download
+frontend/            # Next.js app: capture -> processing -> review -> preview -> download
 templates/           # generated template_v1.pdf / template_v1.json
 jobs/                # per-job working directories (gitignored)
-docs/                # architecture.md
 scripts/             # generate_template.py, run_pipeline.py (CLI)
 ```
 
@@ -97,7 +111,18 @@ Runs preprocessing → alignment → character extraction → validation → nor
 backend/.venv/bin/uvicorn app.main:app --reload --app-dir backend
 ```
 
-Typical flow: `POST /api/jobs` → `POST /api/jobs/{id}/pages` (multipart upload) → `POST /api/jobs/{id}/process` (returns immediately; runs in the background) → poll `GET /api/jobs/{id}/status` until `"completed"` → `GET /api/jobs/{id}/validation`, `GET /api/jobs/{id}/preview?format=png|pdf`, and `GET /api/jobs/{id}/download?format=zip|ttf|otf` (`zip` is the default). `GET /api/templates` lists available templates (`/{id}/pdf` downloads the printable template).
+Two ways to start a job:
+
+- **Plain paper:** `POST /api/jobs/freeform` (multipart photo upload, plus optional font metadata) — creates and processes a job in one call. `GET /api/character-set` returns the full ordered character list to write beforehand.
+- **Printed template:** `POST /api/jobs` → `POST /api/jobs/{id}/pages` (multipart upload) → `POST /api/jobs/{id}/process`.
+
+Either way: poll `GET /api/jobs/{id}/status` until `"completed"`, then `GET /api/jobs/{id}/validation` for the per-character results. From there:
+
+- `GET /api/jobs/{id}/rewrite-list` / `POST /api/jobs/{id}/rewrite` — fix flagged characters with a new plain-paper photo, no reprinting.
+- `POST /api/jobs/{id}/exclude` — rebuild the font leaving out specific characters on purpose.
+- `GET /api/jobs/{id}/preview?format=png|pdf` and `GET /api/jobs/{id}/download?format=zip|ttf|otf` (`zip` is the default).
+
+`GET /api/templates` lists available templates (`/{id}/pdf` downloads the printable template).
 
 ### Run the frontend
 
@@ -121,8 +146,3 @@ or, equivalently, from inside `backend/`:
 cd backend
 .venv/bin/python -m pytest -q
 ```
-
-## Documentation
-
-- [`docs/architecture.md`](docs/architecture.md) — development order, phase-by-phase design decisions, and how each phase was verified.
-- `Initial_project_prompt.txt`, `Project_spec.txt`, `Functional_requirements.txt`, `Non_Functional_requirements` — the original specification this build follows.

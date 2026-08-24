@@ -18,6 +18,10 @@ jobs/*
 output/*
 !output/.gitkeep
 
+# Internal planning/spec docs and phase-by-phase build notes (not for
+# public repo history)
+docs/internal/
+
 # OS / editor
 .DS_Store
 *.swp

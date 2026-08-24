@@ -75,7 +75,7 @@ def extract_glyphs(
         if x1 <= x0 or y1 <= y0:
             raise SegmentationError(
                 f"Character '{element.character}' ({element.id}) on page {page.page} has an "
-                "invalid crop region after alignment — it falls outside the aligned image "
+                "invalid crop region after alignment. It falls outside the aligned image "
                 "entirely. This usually means the page did not align correctly; please "
                 "re-upload a clearer photo of this page."
             )

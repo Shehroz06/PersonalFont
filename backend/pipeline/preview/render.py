@@ -69,7 +69,7 @@ def generate_preview_pdf(
     _page_width, page_height = LETTER
 
     c.setFont("Helvetica-Bold", 16)
-    c.drawString(config.margin, page_height - config.margin - 10, f"{family_name} — Preview")
+    c.drawString(config.margin, page_height - config.margin - 10, f"{family_name} Preview")
 
     pdf_font_size = config.font_size * 0.6
     pdf_line_spacing = config.line_spacing * 0.6

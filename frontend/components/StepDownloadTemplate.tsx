@@ -23,10 +23,10 @@ export default function StepDownloadTemplate({
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h2 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+        <h2 className="text-2xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
           Download the template
         </h2>
-        <p className="mt-2 max-w-xl text-zinc-600 dark:text-zinc-400">
+        <p className="mt-2 max-w-xl text-stone-600 dark:text-stone-400">
           Print it, write one character per box staying inside the lines, then photograph each
           page in good, even lighting.
         </p>
@@ -40,7 +40,7 @@ export default function StepDownloadTemplate({
 
       {templates.length > 1 && (
         <fieldset className="flex flex-col gap-2">
-          <legend className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          <legend className="text-sm font-medium text-stone-700 dark:text-stone-300">
             Template
           </legend>
           {templates.map((template) => (
@@ -58,9 +58,9 @@ export default function StepDownloadTemplate({
       )}
 
       {selected && (
-        <div className="rounded-lg border border-zinc-200 p-4 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
+        <div className="rounded-lg border border-stone-200 p-4 text-sm text-stone-600 dark:border-stone-800 dark:text-stone-400">
           <p>
-            <strong className="text-zinc-900 dark:text-zinc-100">{selected.template_id}</strong>{" "}
+            <strong className="text-stone-900 dark:text-stone-100">{selected.template_id}</strong>{" "}
             &middot; {selected.page_count} page{selected.page_count === 1 ? "" : "s"} &middot;{" "}
             {selected.character_count} characters
           </p>
@@ -72,7 +72,7 @@ export default function StepDownloadTemplate({
           href={templatePdfUrl(selected.template_id)}
           target="_blank"
           rel="noopener noreferrer"
-          className="w-fit rounded-full border border-zinc-300 px-6 py-3 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-800"
+          className="w-fit rounded-full border border-stone-300 px-6 py-3 text-sm font-medium text-stone-900 transition-colors hover:bg-stone-100 dark:border-stone-700 dark:text-stone-100 dark:hover:bg-stone-800"
         >
           Download template PDF
         </a>
@@ -82,7 +82,7 @@ export default function StepDownloadTemplate({
         <button
           type="button"
           onClick={onBack}
-          className="rounded-full px-5 py-2.5 text-sm font-medium text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+          className="rounded-full px-5 py-2.5 text-sm font-medium text-stone-600 hover:bg-stone-100 dark:text-stone-400 dark:hover:bg-stone-800"
         >
           Back
         </button>
@@ -90,9 +90,9 @@ export default function StepDownloadTemplate({
           type="button"
           onClick={onContinue}
           disabled={!selected || loading}
-          className="rounded-full bg-zinc-900 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+          className="rounded-full bg-violet-700 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-violet-600 disabled:cursor-not-allowed disabled:bg-violet-100 disabled:text-violet-400 dark:bg-violet-500 dark:text-stone-950 dark:hover:bg-violet-400 dark:disabled:bg-violet-950 dark:disabled:text-violet-600"
         >
-          {loading ? "Starting job..." : "I've filled it in — continue"}
+          {loading ? "Starting job..." : "I've filled it in, continue"}
         </button>
       </div>
     </div>

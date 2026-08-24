@@ -1,8 +1,11 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Warm "paper" neutrals + a deep violet accent instead of flat
+     black-and-white — this product turns handwriting into a font, so
+     the palette leans into paper tones rather than generic UI gray. */
+  --background: oklch(98.4% 0.005 80);
+  --foreground: oklch(20% 0.014 50);
 }
 
 @theme inline {
@@ -14,13 +17,31 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: oklch(16% 0.008 50);
+    --foreground: oklch(93% 0.007 75);
   }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+a {
+  color: oklch(49.1% 0.27 292.6); /* violet-700 */
+}
+
+a:hover {
+  color: oklch(43.2% 0.232 292.8); /* violet-800 */
+}
+
+@media (prefers-color-scheme: dark) {
+  a {
+    color: oklch(70.2% 0.183 293.5); /* violet-400 */
+  }
+
+  a:hover {
+    color: oklch(81.1% 0.111 293.6); /* violet-300 */
+  }
 }

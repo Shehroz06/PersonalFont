@@ -9,6 +9,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.character_set import router as character_set_router
 from app.api.jobs import router as jobs_router
 from app.api.templates import router as templates_router
 from app.config import get_settings
@@ -32,6 +33,7 @@ def create_app() -> FastAPI:
 
     app.include_router(templates_router)
     app.include_router(jobs_router)
+    app.include_router(character_set_router)
 
     @app.get("/api/health", tags=["health"])
     def health() -> dict[str, str]:

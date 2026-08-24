@@ -294,3 +294,16 @@ def test_preview_404_for_unknown_job(client: TestClient):
     response = client.get("/api/jobs/00000000000000000000000000000000/preview")
 
     assert response.status_code == 404
+
+
+# --- character set -----------------------------------------------------------
+
+
+def test_character_set_returns_full_ordered_list(client: TestClient):
+    response = client.get("/api/character-set")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 76
+    assert body[0] == {"character_id": "uppercase_A", "character": "A"}
+    assert body[-1]["character_id"] == "punctuation_underscore"
