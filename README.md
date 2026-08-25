@@ -1,4 +1,4 @@
-gi# PersonalFont
+# PersonalFont
 
 Turn your own handwriting into a real, installable font (TTF/OTF).
 
@@ -25,7 +25,7 @@ No database, no external services — everything runs locally on the filesystem.
 
 ## Quick start
 
-**One-liner:** `git clone <this-repo-url> personal-font && cd personal-font && ./run.sh` — sets up both the backend and frontend if needed, and starts them together (stop with Ctrl+C).
+**One-liner:** `git clone https://github.com/Shehroz06/PersonalFont.git && cd PersonalFont && ./run.sh` — sets up both the backend and frontend if needed, and starts them together (stop with Ctrl+C).
 
 Or step by step:
 
@@ -34,8 +34,8 @@ Every command below is run from the **repository root** unless a `cd` is shown �
 **1. Clone and set up the backend**
 
 ```bash
-git clone <this-repo-url> personal-font
-cd personal-font
+git clone https://github.com/Shehroz06/PersonalFont.git
+cd PersonalFont
 
 python3 -m venv backend/.venv
 backend/.venv/bin/pip install -r backend/requirements.txt
